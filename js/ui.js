@@ -165,7 +165,8 @@ class UI {
       <button class="primary" data-act="close">Let's go</button>`;
   }
   cookHtml(g, title, cook) {
-    return `<h2>${esc(title)}</h2>
+    return `<div class="cook-head"><img class="chef-photo" src="assets/chef-kitchen.jpg" alt="Vlad in the kitchen" onerror="this.style.display='none'">
+      <div><h2>${esc(title)}</h2><p class="muted">Vlad's on the pans. Orly's setting the table. Stop the marker in the green.</p></div></div>
       <div class="cook-dish" id="cook-dish"></div>
       <div class="cook-cue" id="cook-cue"></div>
       <div class="cook-bar"><div class="zone" id="cook-zone"></div><div class="marker" id="cook-marker"></div></div>
@@ -206,6 +207,7 @@ class UI {
   winHtml(g) {
     const mins = Math.round(g.time / 60);
     return `<div class="ep-kicker">AFTERWORD</div><h2>Sixty-eight tables. Four cities. One year.</h2>
+      <div class="win-photo"><img src="assets/cooks-selfie.jpg" alt="Vlad and Orly"><div class="hero-cap">Vlad &amp; Orly — @chef_briantsev · @chefonthehouse</div></div>
       <p class="hook">You fed ${g.fed.toLocaleString()} strangers and cooked ${g.done.size} tables. Nobody paid you to do it. That was the whole point.</p>
       <p>Cash on hand: $${Math.round(g.cash)} · Earned: $${Math.round(g.stats.earned)} · Perfect services: ${g.stats.perfect} · Busted: ${g.stats.busted} times · Pedestrians splashed: ${g.stats.splashed} · Playtime: ${mins} min</p>
       <p class="muted">The city is still hungry. The streets stay open — keep feeding people.</p>

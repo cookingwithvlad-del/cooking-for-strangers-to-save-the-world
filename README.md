@@ -43,6 +43,8 @@ Between tables it's a GTA city: get in any car with E, pedestrians and traffic, 
 
 ```
 index.html        page + HUD
+assets/           photos of Vlad (the chef) and Orly (the host) — title, cooking and afterword screens
+                  (drop in assets/chef-kitchen.jpg to show Vlad on the cooking screen)
 css/style.css
 js/constants.js   tile sizes, tuning
 js/story.js       cities, shops, ingredients, all 68 episodes, sign lines, cooking cues
