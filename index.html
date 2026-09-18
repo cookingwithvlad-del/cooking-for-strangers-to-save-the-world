@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07090d">
 <title>Cooking for Strangers to Save the World — The Game</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%B3%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
@@ -29,14 +32,14 @@
   <div id="banner"></div>
   <div class="keys">E car · F talk/shop/cook · C plates · B book · M map · Esc pause</div>
   <div id="touch" class="hidden">
-    <div class="dpad">
-      <button data-key="up">▲</button>
-      <button data-key="left">◀</button><button data-key="right">▶</button>
-      <button data-key="down">▼</button>
-    </div>
+    <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
     <div class="acts">
-      <button data-key="act">F</button><button data-key="enter">E</button><button data-key="cook">C</button>
-      <button data-key="space">⏺</button><button data-key="map">M</button><button data-key="pause">II</button>
+      <button data-key="act" class="main"><b>F</b><small>Act</small></button>
+      <button data-key="enter" class="main"><b>E</b><small>Car</small></button>
+      <button data-key="cook" class="main"><b>C</b><small>Cook</small></button>
+      <button data-key="space"><b>⏺</b><small>Stop</small></button>
+      <button data-key="map"><b>M</b><small>Map</small></button>
+      <button data-key="pause"><b>II</b><small>Pause</small></button>
     </div>
   </div>
 </div>

@@ -25,14 +25,40 @@ class Input {
     const wrap = document.getElementById("touch");
     if (!wrap) return;
     wrap.classList.remove("hidden");
+    document.body.classList.add("touch");
     wrap.querySelectorAll("[data-key]").forEach(btn => {
       const a = btn.dataset.key;
-      const on = e => { e.preventDefault(); if (!this.state[a]) this.pressedNow[a] = true; this.state[a] = true; btn.classList.add("on"); };
+      const on = e => { e.preventDefault(); btn.setPointerCapture && btn.setPointerCapture(e.pointerId); sfx.unlock(); if (!this.state[a]) this.pressedNow[a] = true; this.state[a] = true; btn.classList.add("on"); };
       const off = e => { e.preventDefault(); this.state[a] = false; btn.classList.remove("on"); };
-      btn.addEventListener("touchstart", on, { passive: false });
-      btn.addEventListener("touchend", off); btn.addEventListener("touchcancel", off);
-      btn.addEventListener("mousedown", on); btn.addEventListener("mouseup", off); btn.addEventListener("mouseleave", off);
+      btn.addEventListener("pointerdown", on);
+      btn.addEventListener("pointerup", off); btn.addEventListener("pointercancel", off);
+      btn.addEventListener("contextmenu", e => e.preventDefault());
     });
+    this.bindStick();
+  }
+  bindStick() {
+    const zone = document.getElementById("stick"), knob = document.getElementById("knob");
+    if (!zone) return;
+    let id = null, cx = 0, cy = 0;
+    const DEAD = 12, MAXR = 46;
+    const apply = (dx, dy) => {
+      const len = Math.hypot(dx, dy);
+      if (len > MAXR) { dx *= MAXR / len; dy *= MAXR / len; }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      const axis = (v, neg, pos) => {
+        const n = v < -DEAD, p = v > DEAD;
+        if (n && !this.state[neg]) this.pressedNow[neg] = true;
+        if (p && !this.state[pos]) this.pressedNow[pos] = true;
+        this.state[neg] = n; this.state[pos] = p;
+      };
+      axis(dx, "left", "right"); axis(dy, "up", "down");
+    };
+    const move = e => { const r = zone.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; apply(e.clientX - cx, e.clientY - cy); };
+    zone.addEventListener("pointerdown", e => { e.preventDefault(); if (id !== null) return; id = e.pointerId; zone.setPointerCapture(id); zone.classList.add("on"); sfx.unlock(); move(e); });
+    zone.addEventListener("pointermove", e => { if (e.pointerId === id) move(e); });
+    const end = e => { if (e.pointerId !== id) return; id = null; zone.classList.remove("on"); apply(0, 0); };
+    zone.addEventListener("pointerup", end); zone.addEventListener("pointercancel", end);
+    zone.addEventListener("contextmenu", e => e.preventDefault());
   }
   down(a) { return !!this.state[a]; }
   pressed(a) { return !!this.pressedNow[a]; }

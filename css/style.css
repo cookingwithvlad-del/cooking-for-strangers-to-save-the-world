@@ -104,22 +104,46 @@ button.opt .k { display: inline-block; width: 22px; height: 22px; border-radius:
 .legend { font-size: 12px; text-align: center; }
 
 /* Touch controls */
+body.touch { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.touch button { touch-action: manipulation; }
 #touch { position: absolute; inset: 0; pointer-events: none; }
-#touch button { pointer-events: auto; position: absolute; width: 56px; height: 56px; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; font-size: 20px; border: 1px solid rgba(255,255,255,.25); user-select: none; -webkit-user-select: none; touch-action: none; }
-#touch button.on { background: rgba(245,158,11,.7); }
-.dpad { position: absolute; left: 24px; bottom: 24px; width: 180px; height: 180px; }
-.dpad button:nth-child(1) { left: 62px; top: 0; } .dpad button:nth-child(2) { left: 0; top: 62px; }
-.dpad button:nth-child(3) { left: 124px; top: 62px; } .dpad button:nth-child(4) { left: 62px; top: 124px; }
-.acts { position: absolute; right: 24px; bottom: 24px; width: 190px; height: 130px; }
-.acts button:nth-child(1) { right: 0; bottom: 60px; } .acts button:nth-child(2) { right: 66px; bottom: 60px; } .acts button:nth-child(3) { right: 132px; bottom: 60px; }
-.acts button:nth-child(4) { right: 0; bottom: 0; } .acts button:nth-child(5) { right: 66px; bottom: 0; } .acts button:nth-child(6) { right: 132px; bottom: 0; }
+#touch button { pointer-events: auto; position: absolute; width: 58px; height: 58px; border-radius: 50%; background: rgba(15,23,42,.6); color: #fff; border: 1px solid rgba(255,255,255,.3); user-select: none; -webkit-user-select: none; touch-action: none; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; backdrop-filter: blur(3px); }
+#touch button b { font-size: 18px; } #touch button small { font-size: 9px; color: #cbd5e1; margin-top: 2px; letter-spacing: .5px; text-transform: uppercase; }
+#touch button.main { width: 66px; height: 66px; background: rgba(245,158,11,.28); border-color: rgba(251,191,36,.6); }
+#touch button.main b { font-size: 22px; }
+#touch button.on { background: rgba(245,158,11,.85); color: #111; } #touch button.on small { color: #111; }
+.stick { pointer-events: auto; position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 150px; height: 150px; border-radius: 50%; background: rgba(15,23,42,.45); border: 1px solid rgba(255,255,255,.22); touch-action: none; backdrop-filter: blur(3px); }
+.stick.on { border-color: rgba(251,191,36,.7); }
+.knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: rgba(255,255,255,.25); border: 2px solid rgba(255,255,255,.6); box-shadow: 0 4px 14px rgba(0,0,0,.5); pointer-events: none; }
+.stick.on .knob { background: rgba(245,158,11,.75); border-color: #fde68a; }
+.acts { position: absolute; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: 218px; height: 150px; }
+.acts button:nth-child(1) { right: 0; bottom: 70px; } .acts button:nth-child(2) { right: 74px; bottom: 70px; } .acts button:nth-child(3) { right: 148px; bottom: 70px; }
+.acts button:nth-child(4) { right: 4px; bottom: 0; } .acts button:nth-child(5) { right: 78px; bottom: 0; } .acts button:nth-child(6) { right: 152px; bottom: 0; }
 
-@media (max-width: 720px) {
-  .panel.tl { width: 190px; font-size: 11px; } .cash { font-size: 20px; }
-  .panel.obj { bottom: 210px; max-width: 60vw; font-size: 12px; }
-  #hint { bottom: 215px; font-size: 12px; }
+@media (max-width: 720px), (max-height: 520px) {
+  .panel { padding: 6px 8px; border-radius: 8px; }
+  .panel.tl { left: calc(8px + env(safe-area-inset-left, 0px)); top: calc(8px + env(safe-area-inset-top, 0px)); width: 172px; font-size: 11px; }
+  .cash { font-size: 18px; } .row { margin-top: 2px; font-size: 10px; } .lbl { width: 60px; } .city { font-size: 9px; margin-top: 3px; }
+  .panel.tr { right: calc(8px + env(safe-area-inset-right, 0px)); top: calc(8px + env(safe-area-inset-top, 0px)); padding: 4px; }
+  #minimap { width: 104px; height: 104px; } .clock { font-size: 10px; margin-top: 2px; }
+  .panel.obj { left: calc(8px + env(safe-area-inset-left, 0px)); top: calc(148px + env(safe-area-inset-top, 0px)); bottom: auto; right: calc(124px + env(safe-area-inset-right, 0px)); max-width: none; font-size: 11px; }
+  .obj-k { font-size: 9px; letter-spacing: 1px; } .inv { display: none; }
+  #hint { bottom: calc(190px + env(safe-area-inset-bottom, 0px)); font-size: 12px; padding: 5px 12px; max-width: 94vw; white-space: normal; text-align: center; }
+  #toast { top: calc(8px + env(safe-area-inset-top, 0px)); left: 50%; max-width: 70vw; font-size: 12px; padding: 6px 10px; }
   .keys { display: none; }
-  h1 { font-size: 32px; }
-  .title-box, .box { padding: 18px; }
-  .b-title { font-size: 36px; }
+  .b-title { font-size: 34px; letter-spacing: 3px; } .b-sub { font-size: 14px; padding: 0 16px; }
+  h1 { font-size: 30px; } h2 { font-size: 20px; }
+  .title-box, .box { padding: 16px; }
+  .screen { padding: 8px; }
+  .hero { max-width: 100%; }
+  .story, .controls-text { display: none; }
+  .sign-head { flex-direction: column; gap: 8px; } .sign { align-self: flex-start; font-size: 20px; }
+  button.opt { font-size: 14px; padding: 10px 12px; }
+  table.shop td, table.journal td, table.journal th { padding: 5px 4px; font-size: 12px; }
+}
+@media (max-height: 520px) {
+  .panel.obj { top: auto; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); left: calc(190px + env(safe-area-inset-left, 0px)); right: calc(250px + env(safe-area-inset-right, 0px)); }
+  #hint { bottom: calc(70px + env(safe-area-inset-bottom, 0px)); max-width: 40vw; }
+  .stick { width: 120px; height: 120px; } .knob { width: 52px; height: 52px; margin: -26px 0 0 -26px; }
+  .acts { transform: scale(.85); transform-origin: bottom right; }
 }
