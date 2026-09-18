@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Cooking for Strangers to Save the World — The Game</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%B3%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="panel tl">
+    <div id="cash" class="cash">$0</div>
+    <div class="row"><span class="lbl" id="level">Trust Lv 1</span><div class="bar"><div id="trust-bar" class="fill trust"></div></div></div>
+    <div class="row"><span class="lbl">Fed</span><div class="bar"><div id="fed-bar" class="fill fed"></div></div><span class="val" id="fed">0</span></div>
+    <div class="row"><span class="lbl">Heat</span><span id="heat">☆☆☆☆☆</span></div>
+    <div class="row" id="hp-row"><span class="lbl" id="car-name">Car</span><div class="bar"><div id="hp-bar" class="fill hp"></div></div></div>
+    <div id="city" class="city"></div>
+  </div>
+  <div class="panel tr">
+    <canvas id="minimap" width="160" height="160"></canvas>
+    <div id="clock" class="clock"></div>
+  </div>
+  <div class="panel obj"><div id="objective"></div><div id="inv" class="inv"></div></div>
+  <div id="hint"></div>
+  <div id="toast"></div>
+  <div id="banner"></div>
+  <div class="keys">E car · F talk/shop/cook · C plates · B book · M map · Esc pause</div>
+  <div id="touch" class="hidden">
+    <div class="dpad">
+      <button data-key="up">▲</button>
+      <button data-key="left">◀</button><button data-key="right">▶</button>
+      <button data-key="down">▼</button>
+    </div>
+    <div class="acts">
+      <button data-key="act">F</button><button data-key="enter">E</button><button data-key="cook">C</button>
+      <button data-key="space">⏺</button><button data-key="map">M</button><button data-key="pause">II</button>
+    </div>
+  </div>
+</div>
+
+<div id="title" class="screen">
+  <div class="title-box">
+    <div class="kicker">Vlad Briantsev &amp; Orly Israel present</div>
+    <h1>COOKING FOR STRANGERS<br><span>TO SAVE THE WORLD</span></h1>
+    <p class="tag">Sixty-eight tables. Four cities. Two cooks with a knife roll, a cardboard sign, and a rental car.</p>
+    <p class="story">Hold up the sign. Get a stranger to say yes. Shop the market, cook in their kitchen, and feed them properly — without asking for anything. Then do it again, from Manhattan to Miami to Chicago to Los Angeles, until the number is ten thousand.</p>
+    <div class="btns">
+      <button class="primary" data-act="new">New game</button>
+      <button id="continue" data-act="continue">Continue</button>
+    </div>
+    <div id="controls-text" class="controls-text"></div>
+  </div>
+</div>
+
+<div id="modal" class="screen hidden"><div class="box" id="modal-content"></div></div>
+
+<script src="js/constants.js"></script>
+<script src="js/story.js"></script>
+<script src="js/world.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/input.js"></script>
+<script src="js/save.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
