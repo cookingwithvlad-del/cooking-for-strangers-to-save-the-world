@@ -401,6 +401,7 @@ class Game {
     if (inp.pressed("phone")) return this.openPhone();
     if (inp.pressed("radio")) { if (this.player.vehicle) { this.setRadio(radio.index() + 1); } else this.ui.toast("The radio's in the car."); }
     if (inp.pressed("horn")) this.honk();
+    if (inp.pressed("camera") && this.renderer.cycleCamera) this.ui.toast("Camera: " + this.renderer.cycleCamera());
     this.time += dt;
     if (this.signCooldown > 0) this.signCooldown -= dt;
     if (this.lockToastT > 0) this.lockToastT -= dt;
@@ -450,7 +451,12 @@ class Game {
       else if (inp.pressed("cook")) { if (v.kind === "foodtruck") this.openModal("plates", this.ui.platesHtml(this, "🚚 Food Truck")); else this.ui.toast("Cook at a Home Kitchen (🏠), or buy a Food Truck to cook anywhere."); }
       if ((v.kind === "rental" || v.owned) && v.hp < v.maxHp && Math.abs(v.speed) < 5 && dist(v, w.homes[v.city]) < 130) { v.hp = v.maxHp; this.ui.toast("Car patched up outside the Home Kitchen."); }
     } else {
-      const mx = (inp.down("right") ? 1 : 0) - (inp.down("left") ? 1 : 0), my = (inp.down("down") ? 1 : 0) - (inp.down("up") ? 1 : 0);
+      let mx = (inp.down("right") ? 1 : 0) - (inp.down("left") ? 1 : 0), my = (inp.down("down") ? 1 : 0) - (inp.down("up") ? 1 : 0);
+      if (this.renderer.camYaw !== undefined && (mx || my)) {
+        const yaw = this.renderer.camYaw, fwd = -my, side = mx;
+        const wx = Math.cos(yaw) * fwd + Math.cos(yaw + Math.PI / 2) * side, wy = Math.sin(yaw) * fwd + Math.sin(yaw + Math.PI / 2) * side;
+        mx = wx; my = wy;
+      }
       if (mx || my) {
         const l = Math.hypot(mx, my); p.angle = Math.atan2(my, mx); p.walkT += dt;
         const m = tryMove(p, mx / l * 135 * dt, my / l * 135 * dt, p.r, w.solidFoot);

@@ -4,6 +4,10 @@
   const ui = new UI();
   const game = new Game(canvas, ui, input);
   window.game = game;
+  if (window.THREE) {
+    try { game.renderer = new Renderer3D(canvas, game); }
+    catch (e) { console.warn("3D unavailable, using the 2D renderer:", e); }
+  }
 
   const resize = () => game.renderer.resize();
   addEventListener("resize", resize);

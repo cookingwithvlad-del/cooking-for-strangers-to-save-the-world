@@ -2,7 +2,7 @@
 
 A top-down, open-world driving game built from the cookbook *Cooking for Strangers to Save the World* by Vlad Briantsev & Orly Israel. Two cooks, a knife roll, a cardboard sign and a rental car, working their way through 68 tables in four cities — Manhattan, Miami, Chicago and Los Angeles — toward ten thousand strangers fed.
 
-No build step, no dependencies. Plain HTML5 canvas + JavaScript.
+No build step. Plain JavaScript, rendered in 3D with Three.js (vendored in `js/vendor/`, MIT) — a GTA-style chase camera behind Vlad or the car, with a 2D top-down renderer as the automatic fallback if WebGL isn't available. Press V to cycle chase / high / overhead cameras.
 
 ## Play
 
@@ -43,6 +43,7 @@ Between tables it's an open city, and you can do what you like in it:
 | C | Cook quick plates at a Home Kitchen or in a Food Truck |
 | T | Phone — jobs, dealership, radio, stats |
 | R / H | Change radio station / horn |
+| V | Camera: chase, high, overhead |
 | B | The Book — every table so far |
 | M | City map |
 | Space | Stop the marker in the cooking minigame |
@@ -63,7 +64,9 @@ js/people.js      pedestrian names, jobs, looks and dialogue
 js/radio.js       procedural car radio (WebAudio step sequencer, four stations)
 js/world.js       procedural city grid: four quadrants, rivers and bridges, beaches, shops, garages
 js/entities.js    vehicle classes (player/traffic/police AI), pedestrians and dogs, strangers
-js/render.js      canvas renderer, minimap, full map
+js/render3d.js    Three.js renderer: merged city geometry, cars, people, lighting, rain, camera, HTML labels
+js/render.js      2D canvas fallback renderer, minimap, full map
+js/vendor/        three.min.js r128 (MIT)
 js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
 js/game.js        game state, mission flow, heat/police, save/load
 js/input.js       keyboard + touch
