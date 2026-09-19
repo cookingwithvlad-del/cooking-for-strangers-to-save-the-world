@@ -16,7 +16,7 @@ class Game {
 
   initState() {
     const w = this.world;
-    this.cash = START_CASH; this.trust = 0; this.fed = 0; this.heat = 0; this.time = 0;
+    this.cash = START_CASH; this.trust = 0; this.fed = 0; this.heat = 0; this.time = DAY_LENGTH * 0.12;
     this.freeze = 0; this.shake = 0; this.signCooldown = 0; this.lockToastT = 0; this.hornT = 0;
     this.inventory = {}; this.plates = [];
     this.episodeIdx = 0; this.done = new Set(); this.step = null; this.spot = null; this.spotLook = { figures: [] };
@@ -28,7 +28,7 @@ class Game {
     this.owned = []; this.fare = null; this.skids = []; this.weather = { rain: false, t: 40 + w.rng() * 80 };
     this.radioOn = true; this.respawnQueue = []; this.cook = null;
     this.spawnHomeVehicles("ny");
-    this.spawnTraffic(16); this.spawnPeds(60); this.spawnStrangers("ny");
+    this.spawnTraffic(16); this.spawnParked("ny", 14); this.spawnPeds(60); this.spawnStrangers("ny");
     this.setEpisode(0);
     this.renderer.invalidateMap();
   }
@@ -51,7 +51,7 @@ class Game {
     this.radioOn = d.radioOn !== false; radio.set(d.radioStation || 0);
     this.unlocked = new Set(d.unlocked || ["ny"]); this.world.unlocked = this.unlocked;
     this.vehicles = this.vehicles.filter(v => v.kind !== "rental"); this.cars = {};
-    for (const c of this.unlocked) { this.spawnHomeVehicles(c); if (c !== "ny") { this.spawnStrangers(c); this.spawnTraffic(6, c); } }
+    for (const c of this.unlocked) { this.spawnHomeVehicles(c); if (c !== "ny") { this.spawnStrangers(c); this.spawnTraffic(6, c); this.spawnParked(c, 12); } }
     this.setEpisode(Math.min(d.episodeIdx || 0, EPISODES.length - 1));
     if (d.accepted) this.step = this.ep.type === "visit" ? "visit" : "shop";
     if (this.done.has(this.ep.id)) this.step = null;
@@ -101,6 +101,22 @@ class Game {
       this.vehicles.push(v); return v;
     }
     return null;
+  }
+  // Cars parked along the curb: real vehicles, so you can take them.
+  spawnParked(city, n) {
+    const w = this.world;
+    for (let i = 0, tries = 0; i < n && tries < 400; tries++) {
+      const t = w.randomRoadTile(city);
+      if (t.tx % 5 === 0 && t.ty % 5 === 0) continue;
+      const vertical = t.tx % 5 === 0;
+      const side = w.rng() < 0.5 ? -1 : 1;
+      const x = t.tx * TILE + 16 + (vertical ? side * 12 : 0), y = t.ty * TILE + 16 + (vertical ? 0 : side * 12);
+      if (this.vehicles.some(v => dist(v, { x, y }) < 44) || dist({ x, y }, this.player) < 120) continue;
+      const kind = w.rng() < 0.15 ? "taxi" : w.rng() < 0.2 ? "sports" : w.rng() < 0.3 ? "van" : "sedan";
+      const v = new Vehicle(kind, x, y, vertical ? (side < 0 ? -Math.PI / 2 : Math.PI / 2) : (side < 0 ? Math.PI : 0), w.rng);
+      v.ai = false; v.parked = true;
+      this.vehicles.push(v); i++;
+    }
   }
   spawnPeds(n) { for (let i = 0; i < n; i++) this.spawnPed(); }
   spawnPed(city, near) {
@@ -317,7 +333,7 @@ class Game {
   }
   unlockCity(city) {
     this.unlocked.add(city);
-    this.spawnHomeVehicles(city); this.spawnStrangers(city); this.spawnTraffic(6, city);
+    this.spawnHomeVehicles(city); this.spawnStrangers(city); this.spawnTraffic(6, city); this.spawnParked(city, 12);
     for (let i = 0; i < 12; i++) this.spawnPed(city);
     this.renderer.invalidateMap();
     sfx.unlockCity();
@@ -509,6 +525,7 @@ class Game {
   tryEnterVehicle() {
     const v = this.nearCar();
     if (!v) return;
+    if (v.parked) { v.parked = false; this.heat = Math.min(MAX_HEAT, this.heat + 0.4); this.ui.toast("Someone's parked car. Nobody saw. Probably."); }
     if (v.ai) {
       this.heat = Math.min(MAX_HEAT, this.heat + 0.7); this.stats.carjacks++;
       const pd = this.spawnPed(this.city);

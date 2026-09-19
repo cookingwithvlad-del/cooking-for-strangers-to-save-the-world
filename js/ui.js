@@ -36,6 +36,7 @@ class UI {
       case "journal": g.openJournal(); break;
       case "map": g.openMap(); break;
       case "phone": g.openPhone(ds.tab); break;
+      case "graphics": g.saveGame(false); try { localStorage.setItem("cfs-2d", g.is3d ? "1" : "0"); } catch (e) {} location.reload(); break;
       case "buycar": g.buyVehicle(ds.kind); break;
       case "station": g.setRadio(+ds.i); break;
       case "radiotoggle": g.toggleRadio(); break;
@@ -115,6 +116,7 @@ class UI {
         <button class="primary" data-act="resume">Resume</button>
         <button data-act="save">Save</button>
         <button data-act="controls">Controls</button>
+        <button data-act="graphics">${g.is3d ? "Switch to 2D (faster)" : "Switch to 3D"}</button>
         <button data-act="title">Title screen</button>
         <button class="danger" data-act="restart">Start over</button>
       </div>`;

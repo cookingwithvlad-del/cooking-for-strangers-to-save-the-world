@@ -2,7 +2,15 @@
 
 A top-down, open-world driving game built from the cookbook *Cooking for Strangers to Save the World* by Vlad Briantsev & Orly Israel. Two cooks, a knife roll, a cardboard sign and a rental car, working their way through 68 tables in four cities — Manhattan, Miami, Chicago and Los Angeles — toward ten thousand strangers fed.
 
-No build step. Plain JavaScript, rendered in 3D with Three.js (vendored in `js/vendor/`, MIT) — a GTA-style chase camera behind Vlad or the car, with a 2D top-down renderer as the automatic fallback if WebGL isn't available. Press V to cycle chase / high / overhead cameras.
+No build step. Plain JavaScript, rendered in 3D with Three.js (vendored in `js/vendor/`, MIT) — a GTA-style chase camera behind Vlad or the car. Press V to cycle chase / high / overhead cameras. A 2D top-down renderer is the automatic fallback if WebGL isn't available, and you can switch to it from the pause menu (or open the game with `?2d=1`) on a slow phone.
+
+### How it stays fast on a phone
+
+Draw calls are what kill frame rate on mobile GPUs, so the renderer is built around avoiding them: the whole static city is merged into about ten meshes (roads, sidewalks, parks, buildings, glass, props, signs), and every car, pedestrian, dog, traffic light and contact shadow is drawn through `InstancedMesh` — one draw call per body part for the entire crowd. A typical frame is under 40 draw calls. Phones additionally get pixel ratio 1, fewer lights, no shadow maps (contact shadows instead), a shorter draw distance and fewer clouds and raindrops.
+
+### The look
+
+A sun that moves across a shaded sky dome through sunrise, noon, dusk and night; ACES filmic tone mapping; humid haze that's thicker in Florida and LA and in the rain; procedural textures for asphalt, concrete, grass, sand, water and building facades whose windows glow at night; storefront glass, awnings and neon signs at street level; traffic lights that cycle; palms in the southern cities; wet roads that pick up headlight and streetlight reflections when it rains; real shadows on desktop.
 
 ## Play
 
