@@ -2,6 +2,7 @@ const KEYMAP = {
   KeyW: "up", ArrowUp: "up", KeyS: "down", ArrowDown: "down",
   KeyA: "left", ArrowLeft: "left", KeyD: "right", ArrowRight: "right",
   KeyE: "enter", KeyF: "act", Enter: "act", KeyC: "cook", KeyB: "book", KeyM: "map",
+  KeyT: "phone", KeyR: "radio", KeyH: "horn",
   Escape: "pause", KeyP: "pause", Space: "space",
   Digit1: "opt1", Digit2: "opt2", Digit3: "opt3",
 };

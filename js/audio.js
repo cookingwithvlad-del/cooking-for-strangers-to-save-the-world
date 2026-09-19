@@ -27,5 +27,6 @@ const sfx = (() => {
     siren() { tone(700, 0.3, "sine", 0.05, 300); },
     no() { tone(300, 0.15, "square", 0.07, -100); },
     unlockCity() { [440, 554, 659, 880].forEach((f, i) => setTimeout(() => tone(f, 0.3, "triangle", 0.1), i * 140)); },
+    horn() { tone(392, 0.35, "sawtooth", 0.09); tone(494, 0.35, "sawtooth", 0.07); },
   };
 })();

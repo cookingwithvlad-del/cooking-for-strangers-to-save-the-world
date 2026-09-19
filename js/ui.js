@@ -35,6 +35,10 @@ class UI {
       case "pause": g.pause(); break;
       case "journal": g.openJournal(); break;
       case "map": g.openMap(); break;
+      case "phone": g.openPhone(ds.tab); break;
+      case "buycar": g.buyVehicle(ds.kind); break;
+      case "station": g.setRadio(+ds.i); break;
+      case "radiotoggle": g.toggleRadio(); break;
     }
   }
 
@@ -60,9 +64,9 @@ class UI {
     this.$("heat").className = stars > 0 ? "hot" : "";
     const v = g.player.vehicle;
     this.$("hp-row").style.display = v ? "" : "none";
-    if (v) { this.$("hp-bar").style.width = v.hp + "%"; this.$("car-name").textContent = v.name; }
+    if (v) { this.$("hp-bar").style.width = (v.hp / v.maxHp * 100) + "%"; this.$("car-name").textContent = v.name; }
     const c = CITIES[g.city];
-    this.$("city").textContent = c.name + " · " + c.part;
+    this.$("city").textContent = c.name + " · " + c.part + (g.weather.rain ? " · 🌧" : "") + (v && radio.on ? " · 📻 " + radio.station.name : "");
     this.$("objective").innerHTML = g.objectiveHtml();
     const inv = Object.entries(g.inventory).filter(([, n]) => n > 0).length;
     this.$("inv").textContent = `🧺 ${inv} ingredients · 🍽 ${g.plates.length} plates · 📖 ${g.done.size}/${EPISODES.length} tables`;
@@ -91,9 +95,11 @@ class UI {
     return `<h2>Controls</h2>
     <table class="controls">
       <tr><td>WASD / Arrows</td><td>Walk · Drive (W gas, S brake/reverse, A/D steer)</td></tr>
-      <tr><td>E</td><td>Get in / out of a car (any car — it's that kind of game)</td></tr>
-      <tr><td>F</td><td>Talk · Hold up the sign · Shop · Cook · Hand over a plate</td></tr>
-      <tr><td>C</td><td>Cook quick plates at your Home Kitchen</td></tr>
+      <tr><td>E</td><td>Get in / out of a car (any car — the driver won't like it)</td></tr>
+      <tr><td>F</td><td>Talk to anyone · Hold up the sign · Shop · Cook · Hand over a plate · Pick up a fare · Body shop</td></tr>
+      <tr><td>C</td><td>Cook quick plates at a Home Kitchen or in a Food Truck</td></tr>
+      <tr><td>T</td><td>Phone — jobs, dealership, radio, stats</td></tr>
+      <tr><td>R / H</td><td>Change radio station · Horn</td></tr>
       <tr><td>B</td><td>The Book — every table so far</td></tr>
       <tr><td>M</td><td>City map</td></tr>
       <tr><td>Space</td><td>Stop the marker in the cooking minigame</td></tr>
@@ -130,7 +136,7 @@ class UI {
       <div class="scroll"><table class="shop">${rows}</table></div>
       <button data-act="close">Leave</button>`;
   }
-  platesHtml(g) {
+  platesHtml(g, title = "🏠 Home Kitchen") {
     const rows = PLATES.map(p => {
       const can = p.ing.every(i => (g.inventory[i] || 0) > 0);
       const ing = p.ing.map(i => `<span class="${(g.inventory[i] || 0) > 0 ? "ok" : "need"}">${esc(ING[i].name)}</span>`).join(", ");
@@ -138,8 +144,8 @@ class UI {
         <td><button data-act="plate" data-plate="${p.id}" ${can ? "" : "disabled"}>Cook</button></td></tr>`;
     }).join("");
     const have = g.plates.map(p => PLATES.find(x => x.id === p.id).icon).join(" ") || "none yet";
-    return `<h2>🏠 Home Kitchen</h2>
-      <p class="muted">Quick plates for the hungry strangers marked 🟠 on the map. They tip, and every one of them counts toward 10,000.</p>
+    return `<h2>${esc(title)}</h2>
+      <p class="muted">Quick plates for anyone hungry — the 🟠 regulars on the map, or any pedestrian with a 🍴 over their head. They tip, and every one of them counts toward 10,000.</p>
       <p>Plates in the bag: ${have}</p>
       <div class="scroll"><table class="shop">${rows}</table></div>
       <button data-act="close">Leave</button>`;
@@ -198,6 +204,52 @@ class UI {
       <p class="muted">${g.done.size} of ${EPISODES.length} tables · ${g.fed.toLocaleString()} strangers fed · $${Math.round(g.stats.earned)} earned · ${g.stats.perfect} perfect services</p>
       <div class="scroll tall"><table class="journal"><tr><th></th><th>#</th><th>Table</th><th>Menu</th><th>Covers</th></tr>${rows}</table></div>
       <button data-act="close">Close</button>`;
+  }
+  phoneHtml(g, tab) {
+    const tabs = [["jobs", "Jobs"], ["garage", "Garage"], ["radio", "Radio"], ["stats", "Stats"]].map(([id, label]) => `<button class="tab ${tab === id ? "on" : ""}" data-act="phone" data-tab="${id}">${label}</button>`).join("");
+    let body = "";
+    if (tab === "jobs") {
+      body = `<h3>Ways to make a living</h3>
+        <ul class="jobs">
+          <li><b>🚕 Taxi fares.</b> Get in any taxi. People waving (🖐) want a ride — pull up, press F, drive them to the drop-off. Fast rides tip.${g.fare ? `<br><span class="ok">Current fare: ${esc(g.fare.ped.name)} → ${esc(g.fare.where)} · $${g.fare.pay}</span>` : ""}</li>
+          <li><b>🍽 Plates.</b> Cook quick plates at a Home Kitchen (or in a Food Truck), then hand them to the 🟠 regulars or to anyone with a 🍴 over their head. Every one counts toward 10,000.</li>
+          <li><b>📖 The tables.</b> The main line: 68 tables from the book, in order. Press B for the full list.</li>
+          <li><b>🔧 Body shop.</b> Wrecked the car or got the police on you? Drive into an Auto Body and press F. $${GARAGE_FEE}, no questions.</li>
+          <li><b>🌊 The river.</b> Bridges every fifth block. Miss one and Orly has to fish you out.</li>
+        </ul>`;
+    } else if (tab === "garage") {
+      const city = g.nearestHomeCity();
+      const rows = ["scooter", "taxi", "foodtruck", "sports"].map(k => {
+        const s = VEHICLE_SPECS[k];
+        const ownedHere = g.owned.filter(o => o.kind === k).length;
+        const notes = { scooter: "Nimble, fragile, fits anywhere.", taxi: "Pick up fares and get paid to drive.", foodtruck: "A kitchen on wheels — press C inside to cook plates anywhere.", sports: "Fastest thing in the city. Watch the heat." }[k];
+        return `<tr><td><b>${esc(s.name)}</b><br><small>${notes} Top speed ${s.maxSpeed}. ${ownedHere ? `Owned ×${ownedHere}.` : ""}</small></td><td>$${s.price}</td><td><button data-act="buycar" data-kind="${k}" ${g.cash < s.price ? "disabled" : ""}>Buy</button></td></tr>`;
+      }).join("");
+      body = `<h3>Dealership</h3><p class="muted">Cash: <b>$${Math.round(g.cash)}</b>. New cars park outside the ${esc(CITIES[city].name)} Home Kitchen (${g.world.homes[city].parking.length - 1 - g.owned.filter(o => o.city === city).length} spaces left there).</p>
+        <div class="scroll"><table class="shop">${rows}</table></div>`;
+    } else if (tab === "radio") {
+      const rows = STATIONS.map((s, i) => `<tr class="${radio.index() === i ? "ok" : ""}"><td>${radio.index() === i ? "▶" : ""}</td><td><b>${esc(s.name)}</b><br><small>${esc(s.tag)} · ${s.bpm} bpm</small></td><td><button data-act="station" data-i="${i}">Tune</button></td></tr>`).join("");
+      body = `<h3>Car radio</h3><p class="muted">Plays whenever you're in a car${g.radioOn ? "" : " (currently off)"}. R cycles stations while driving.</p>
+        <div class="scroll"><table class="shop">${rows}</table></div><button data-act="radiotoggle">${g.radioOn ? "Turn radio off" : "Turn radio on"}</button>`;
+    } else {
+      const s = g.stats;
+      body = `<h3>Stats</h3><table class="journal">
+        <tr><td>Strangers fed</td><td>${g.fed.toLocaleString()} of ${FED_GOAL.toLocaleString()}</td></tr>
+        <tr><td>Tables served</td><td>${g.done.size} of ${EPISODES.length}</td></tr>
+        <tr><td>Plates handed out on the street</td><td>${s.fed_street}</td></tr>
+        <tr><td>Perfect services</td><td>${s.perfect}</td></tr>
+        <tr><td>Cash earned</td><td>$${Math.round(s.earned)}</td></tr>
+        <tr><td>Taxi fares</td><td>${s.fares}</td></tr>
+        <tr><td>Cars borrowed without asking</td><td>${s.carjacks}</td></tr>
+        <tr><td>Pedestrians hit</td><td>${s.splashed}</td></tr>
+        <tr><td>Times busted</td><td>${s.busted}</td></tr>
+        <tr><td>Times in the river</td><td>${s.swims}</td></tr>
+        <tr><td>Trust level</td><td>${g.level} (${g.trust} pts)</td></tr>
+      </table>`;
+    }
+    return `<div class="phone-head"><span class="phone-dot"></span><h2>Phone</h2><span class="muted">${g.clockText()}</span></div>
+      <div class="tabs">${tabs}</div>${body}
+      <button data-act="close">Put it away</button>`;
   }
   mapHtml() {
     return `<h2>🗺 The Map</h2><canvas id="bigmap" width="480" height="480"></canvas>

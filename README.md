@@ -24,7 +24,14 @@ Every table in the book is a mission, in the book's order:
 3. **Cook in their kitchen.** A timing minigame, one round per dish, each with a cue from the book's technique (velveting, hollandaise, "don't lift the lid"). Quality decides the tip.
 4. **Table served.** Covers count toward the 10,000. Finish a city's tables and the next city opens — drive there, find the new Home Kitchen and the fresh rental.
 
-Between tables it's a GTA city: get in any car with E, pedestrians and traffic, heat that rises when you drive like an idiot, police that chase you when it does, and hungry strangers (🟠) who'll tip for a quick plate — hummus and pita, onigiri, tacos — cooked at your Home Kitchen with C.
+Between tables it's an open city, and you can do what you like in it:
+
+- **People.** Every pedestrian has a name, a job and something to say — press F to talk. Some are hungry (🍴); hand them a plate. Dog walkers, couples chatting on corners, umbrellas when it rains. Hit someone with a car and they'll tell you what they think of you.
+- **Cars.** Sedans, taxis, vans, buses, sports cars, scooters. Press E to take any of them — the driver gets thrown out and comes after you. Headlights and streetlights at night, brake lights, skid marks, honking when you block traffic.
+- **Jobs.** Get in a taxi and pick up anyone waving (🖐) for a fare. Buy a Food Truck from the phone (T) and cook plates anywhere. Feed the 🟠 regulars for tips.
+- **Heat.** Bad driving raises it, police chase you at one star and up. Drive into an Auto Body (🔧) and press F to lose the heat and fix the car.
+- **The city.** Two rivers cut the map into four cities, with bridges every fifth block — drive in and Orly fishes you out. Miami Beach on Florida's east edge, the Venice boardwalk at the bottom of LA. Day, night, rain.
+- **The phone (T).** Jobs, a dealership (scooter, taxi, food truck, sports car), a four-station procedural car radio, and your stats.
 
 ## Controls
 
@@ -33,7 +40,9 @@ Between tables it's a GTA city: get in any car with E, pedestrians and traffic, 
 | WASD / arrows | Walk, drive (W gas, S brake/reverse, A/D steer) |
 | E | Get in / out of a car |
 | F | Talk, hold up the sign, shop, cook, hand over a plate |
-| C | Cook quick plates at a Home Kitchen |
+| C | Cook quick plates at a Home Kitchen or in a Food Truck |
+| T | Phone — jobs, dealership, radio, stats |
+| R / H | Change radio station / horn |
 | B | The Book — every table so far |
 | M | City map |
 | Space | Stop the marker in the cooking minigame |
@@ -50,8 +59,10 @@ assets/           photos of Vlad (the chef) and Orly (the host) — title, cooki
 css/style.css
 js/constants.js   tile sizes, tuning
 js/story.js       cities, shops, ingredients, all 68 episodes, sign lines, cooking cues
-js/world.js       procedural city grid (four quadrants, one per city)
-js/entities.js    vehicles (player/traffic/police AI), pedestrians, strangers
+js/people.js      pedestrian names, jobs, looks and dialogue
+js/radio.js       procedural car radio (WebAudio step sequencer, four stations)
+js/world.js       procedural city grid: four quadrants, rivers and bridges, beaches, shops, garages
+js/entities.js    vehicle classes (player/traffic/police AI), pedestrians and dogs, strangers
 js/render.js      canvas renderer, minimap, full map
 js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
 js/game.js        game state, mission flow, heat/police, save/load
