@@ -74,6 +74,13 @@ class Renderer3D {
     this.gl.toneMapping = THREE.ACESFilmicToneMapping; this.gl.toneMappingExposure = 1.05;
     this.shadows = !this.touch;
     this.gl.shadowMap.enabled = this.shadows; this.gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    if (!this.touch && THREE.EffectComposer && THREE.UnrealBloomPass && THREE.GammaCorrectionShader) {
+      try {
+        this.composer = new THREE.EffectComposer(this.gl);
+        this.bloom = new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth || 1280, innerHeight || 720), 0.3, 0.55, 0.85);
+        this.gamma = new THREE.ShaderPass(THREE.GammaCorrectionShader);
+      } catch (e) { console.warn("post-processing off:", e); this.composer = null; }
+    }
     canvas2d.parentNode.insertBefore(canvas, canvas2d.nextSibling);
     canvas2d.style.display = "none";
     this.canvas = canvas;
@@ -81,6 +88,7 @@ class Renderer3D {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog("#cfe8ff", 400, 1300);
     this.camera = new THREE.PerspectiveCamera(55, 1, 2, 3200);
+    if (this.composer) { this.composer.addPass(new THREE.RenderPass(this.scene, this.camera)); this.composer.addPass(this.bloom); this.composer.addPass(this.gamma); }
     this.camYaw = 0; this.camMode = 0; this.camPos = new THREE.Vector3(); this.camLook = new THREE.Vector3(); this._want = new THREE.Vector3(); this._look = new THREE.Vector3();
     this.mini = document.getElementById("minimap"); this.mctx = this.mini.getContext("2d");
     this.mapCache = document.createElement("canvas"); this.mapCache.width = CITY * 8; this.mapCache.height = CITY * 8; this.mapDirty = true;
@@ -100,8 +108,8 @@ class Renderer3D {
   // Blender assets arrived: swap in modeled parts, baked maps and sky reflections, then rebuild the city with real props.
   onAssets() {
     const A = Assets3D;
-    if (A.person) for (const k of ["leg", "arm", "body", "head", "hair", "hat"]) if (A.person[k]) this.I[k].mesh.geometry = A.person[k];
-    const shiny = this.touch ? () => new THREE.MeshPhongMaterial({ color: "#ffffff", shininess: 70, specular: new THREE.Color("#99aabb") }) : () => new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.55, roughness: 0.32 });
+    if (A.person) for (const k of ["leg", "arm", "body", "hair", "hat"]) if (A.person[k]) this.I[k].mesh.geometry = A.person[k];
+    const shiny = this.touch ? () => new THREE.MeshPhongMaterial({ color: "#ffffff", shininess: 70, specular: new THREE.Color("#99aabb") }) : () => new THREE.MeshPhysicalMaterial({ color: "#ffffff", metalness: 0.45, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.2 });
     const glassy = this.touch ? () => new THREE.MeshPhongMaterial({ color: "#ffffff", shininess: 120, specular: new THREE.Color("#ccddee") }) : () => new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.9, roughness: 0.08 });
     const dark = () => new THREE.MeshLambertMaterial({ color: "#ffffff" });
     const P = (geo, mat, max) => { const p = new Parts(geo, mat, max, this.shadows); this.scene.add(p.mesh); return p; };
@@ -139,7 +147,7 @@ class Renderer3D {
     return true;
   }
   invalidateMap() { this.mapDirty = true; this.rebuildLocks(); }
-  resize() { this.gl.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
+  resize() { this.gl.setSize(innerWidth, innerHeight); if (this.composer) this.composer.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
   cycleCamera() { this.camMode = (this.camMode + 1) % 3; return ["chase", "high", "overhead"][this.camMode]; }
   hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; }
 
@@ -236,7 +244,19 @@ class Renderer3D {
   buildCity() {
     const w = this.game.world;
     const roads = new GeoBuilder(), walks = new GeoBuilder(), grass = new GeoBuilder(), sand = new GeoBuilder(), water = new GeoBuilder();
-    const bld = new GeoBuilder(), glass = new GeoBuilder(), props = new GeoBuilder(), bulbs = new GeoBuilder(), signs = new GeoBuilder(), lampGlow = new GeoBuilder();
+    const bld = new GeoBuilder(), glass = new GeoBuilder(), props = new GeoBuilder(), bulbs = new GeoBuilder(), signs = new GeoBuilder(), lampGlow = new GeoBuilder(), puddles = new GeoBuilder();
+    const facB = { brick: bld, glass: new GeoBuilder(), stucco: new GeoBuilder(), concrete: new GeoBuilder() };
+    const facKeys = { brick: "facade", glass: "facadeGlass", stucco: "facadeStucco", concrete: "facadeConcrete" };
+    const A0 = window.Assets3D ? Assets3D.tex : {};
+    const STYLE_MIX = { ny: [["brick", 0.5], ["concrete", 0.3], ["glass", 0.2]], fl: [["stucco", 0.6], ["glass", 0.25], ["concrete", 0.15]], chi: [["brick", 0.4], ["concrete", 0.35], ["glass", 0.25]], la: [["stucco", 0.55], ["concrete", 0.25], ["glass", 0.2]] };
+    const TINTS = { glass: ["#dfe9f3", "#cfe0ee", "#d9e6e9", "#e4ecf2"], stucco: ["#f8e3d4", "#fdf1dc", "#dfeee6", "#f6dede", "#e8e4f4", "#fbf5e6"], concrete: ["#d9d7d2", "#cfd0cc", "#e0ded8", "#c9cbc8"] };
+    const styleOf = (bx, by, cid, hh) => {
+      const r = this.hash(bx * 13 + 5, by * 29 + 1);
+      let st = "brick";
+      if (hh > 100) st = r < 0.75 ? "glass" : "concrete";
+      else { let acc = 0; for (const [k, wgt] of STYLE_MIX[cid]) { acc += wgt; if (r < acc) { st = k; break; } } }
+      return A0[facKeys[st] + "Color"] ? st : "brick";
+    };
     const blockHeight = (bx, by) => { const h = this.hash(bx * 3 + 1, by * 7 + 2); const center = Math.hypot(bx - 4.5, by - 4.5); return 30 + Math.floor(h * 7) * 14 + (center < 2.5 ? 60 : 0) + (h > 0.92 ? 90 : 0); };
     roads.box(WORLD / 2, -6, WORLD / 2, WORLD + 600, 8, WORLD + 600, "#242833", 64);
     const isWalkable = t => t === T.SIDEWALK || t === T.SAND || t === T.PARK || t === T.GARAGE;
@@ -246,6 +266,7 @@ class Renderer3D {
       if (t === T.ROAD || t === T.BRIDGE) {
         const y = t === T.BRIDGE ? 3 : 0.5;
         roads.box(cx, y, cz, TILE, t === T.BRIDGE ? 6 : 1, TILE, "#ffffff", 48, Math.floor(h * 3) * 0.5);
+        if (t === T.ROAD && this.hash(tx + 77, ty + 33) < 0.16) { const pr = 6 + h * 6; puddles.cyl(cx + (h - 0.5) * 14, 1.12, cz + (this.hash(ty + 5, tx + 9) - 0.5) * 14, pr, pr, 0.12, "#ffffff", 14); }
         if (tx % 5 === 0 && ty % 5 !== 0) { props.box(cx, y + 0.65, cz - 8, 1.6, 0.3, 10, "#d8c25a"); props.box(cx, y + 0.65, cz + 8, 1.6, 0.3, 10, "#d8c25a"); }
         else if (ty % 5 === 0 && tx % 5 !== 0) { props.box(cx - 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); props.box(cx + 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); }
         const isCross = tx % 5 === 0 && ty % 5 === 0;
@@ -275,7 +296,11 @@ class Renderer3D {
       } else if (isWalkable(t)) {
         const b = t === T.SAND ? sand : t === T.PARK ? grass : walks;
         b.box(cx, 1, cz, TILE, 2, TILE, t === T.GARAGE ? "#9ca3af" : warm && t === T.SIDEWALK ? "#e8e0d0" : "#ffffff", 32, h);
-        for (const [dx, dy] of DIRS) { if (w.get(tx + dx, ty + dy) === T.ROAD) props.box(cx + dx * 15.5, 1.6, cz + dy * 15.5, dx ? 1 : TILE, 1.2, dy ? 1 : TILE, "#d4d7dd"); }
+        for (const [dx, dy] of DIRS) {
+          const nt = w.get(tx + dx, ty + dy);
+          if (nt === T.ROAD) props.box(cx + dx * 15.5, 1.6, cz + dy * 15.5, dx ? 1 : TILE, 1.2, dy ? 1 : TILE, "#d4d7dd");
+          if (nt === T.BUILDING && t === T.SIDEWALK) props.box(cx + dx * 14.6, 2.08, cz + dy * 14.6, dx ? 2.8 : TILE, 0.16, dy ? 2.8 : TILE, "#8e9197");
+        }
         if (t === T.SIDEWALK) {
           if (h < 0.05) { if (!this.prop(props, "trash", cx, cz, 0.8, h * 6, { body: "#4b5563", lid: "#1f2937" })) { props.box(cx, 4, cz, 6, 6, 6, "#374151"); props.box(cx, 7.5, cz, 7, 1, 7, "#1f2937"); } }
           else if (h < 0.09) { if (!this.prop(props, "bench", cx, cz, 1, 0, { wood: "#8b5a2b", iron: "#2d2d33" })) { props.box(cx, 5, cz, 20, 1.5, 5, "#6b4f2a"); props.box(cx, 8, cz - 2.5, 20, 5, 1.2, "#6b4f2a"); props.box(cx - 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); props.box(cx + 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); } }
@@ -302,13 +327,16 @@ class Renderer3D {
       } else if (t === T.BUILDING) {
         const bx = Math.floor(tx / 5), by = Math.floor(ty / 5);
         const hh = blockHeight(bx, by) + (this.hash(tx * 5, ty * 3) < 0.3 ? 14 : 0);
-        const baked = window.Assets3D && Assets3D.tex.facadeColor;
-        const tint = baked ? new THREE.Color("#ffffff").lerp(new THREE.Color(CITIES[cid].color), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.1) : new THREE.Color(CITIES[cid].color).lerp(new THREE.Color("#ffffff"), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.08);
-        bld.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, Math.floor(this.hash(tx + 3, ty + 9) * 4) * 0.25, 96);
+        const baked = !!A0.facadeColor, style = styleOf(bx, by, cid, hh), fb = facB[style];
+        let tint;
+        if (style === "brick") tint = baked ? new THREE.Color("#ffffff").lerp(new THREE.Color(CITIES[cid].color), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.1) : new THREE.Color(CITIES[cid].color).lerp(new THREE.Color("#ffffff"), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.08);
+        else { const pal = TINTS[style]; tint = new THREE.Color(pal[Math.floor(this.hash(bx * 7 + 2, by * 3 + 11) * pal.length)]).offsetHSL(0, 0, (h - 0.5) * 0.05); }
+        fb.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, Math.floor(this.hash(tx + 3, ty + 9) * 4) * 0.25, 96);
         props.box(cx, hh + 0.9, cz, TILE + 0.6, 1.8, TILE + 0.6, CITIES[cid].roof);
         if (this.hash(tx + 7, ty + 3) < 0.35) props.box(cx + (h - 0.5) * 12, hh + 4, cz + (this.hash(ty, tx) - 0.5) * 12, 8, 6, 8, "#9aa3ad");
         if (this.hash(tx + 11, ty + 5) < 0.1) { props.box(cx, hh + 3, cz, 10, 4, 10, "#cbd5e1"); props.cyl(cx, hh + 12, cz, 0.5, 0.5, 14, "#e5e7eb", 4); props.cyl(cx, hh + 9, cz, 3.5, 3.5, 6, "#8b5a2b", 8); }
-        if (hh > 100 && this.hash(tx + 2, ty + 8) < 0.5) bld.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 0.25, 96);
+        if (hh > 100 && this.hash(tx + 2, ty + 8) < 0.5) fb.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 0.25, 96);
+        if (style === "glass" || style === "concrete") props.box(cx, hh + 2.2, cz, TILE - 2, 1, TILE - 2, "#4b5563");
         for (let d = 0; d < 4; d++) {
           const [dx, dy] = DIRS[d];
           const nt = w.get(tx + dx, ty + dy);
@@ -344,12 +372,22 @@ class Renderer3D {
     this.roads = roads.build(roadMat);
     const groundMeshes = [this.roads, walks.build(this.surfaceMat("concreteColor", "concreteNormal", null, this.tex.concrete)), grass.build(this.surfaceMat("grassColor", "grassNormal", null, this.tex.grass)), sand.build(this.surfaceMat("sandColor", "sandNormal", null, this.tex.sand))];
     for (const m of groundMeshes) { m.receiveShadow = this.shadows; this.addStatic(m); }
-    if (A.facadeColor) {
-      this.bld = bld.build(this.touch
-        ? new THREE.MeshLambertMaterial({ vertexColors: true, map: A.facadeColor, emissiveMap: A.facadeEmissive || null, emissive: new THREE.Color("#000000") })
-        : new THREE.MeshStandardMaterial({ vertexColors: true, map: A.facadeColor, normalMap: A.facadeNormal || null, roughnessMap: A.facadeRough || null, emissiveMap: A.facadeEmissive || null, emissive: new THREE.Color("#000000"), roughness: 1, metalness: 0, normalScale: new THREE.Vector2(1.2, 1.2) }));
-    } else this.bld = bld.build(new THREE.MeshLambertMaterial({ vertexColors: true, map: this.tex.facade, emissiveMap: this.tex.facadeLit, emissive: new THREE.Color("#000000") }));
-    this.bld.castShadow = this.shadows; this.bld.receiveShadow = this.shadows; this.addStatic(this.bld);
+    this.blds = [];
+    for (const [st, b] of Object.entries(facB)) {
+      if (b.empty) continue;
+      const k = facKeys[st];
+      let mat;
+      if (A[k + "Color"]) mat = this.touch
+        ? new THREE.MeshLambertMaterial({ vertexColors: true, map: A[k + "Color"], emissiveMap: A[k + "Emissive"] || null, emissive: new THREE.Color("#000000") })
+        : new THREE.MeshStandardMaterial({ vertexColors: true, map: A[k + "Color"], normalMap: A[k + "Normal"] || null, roughnessMap: A[k + "Rough"] || null, emissiveMap: A[k + "Emissive"] || null, emissive: new THREE.Color("#000000"), roughness: 1, metalness: st === "glass" ? 0.4 : 0, normalScale: new THREE.Vector2(1.2, 1.2), envMapIntensity: st === "glass" ? 1.2 : 0.4 });
+      else mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: this.tex.facade, emissiveMap: this.tex.facadeLit, emissive: new THREE.Color("#000000") });
+      const m = b.build(mat); m.userData.style = st; m.castShadow = this.shadows; m.receiveShadow = this.shadows; this.addStatic(m); this.blds.push(m);
+    }
+    this.bld = this.blds[0];
+    this.puddles = puddles.build(this.touch
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, color: "#2a3139", shininess: 220, specular: new THREE.Color("#ffffff"), transparent: true, opacity: 0.85 })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, color: "#1f252d", roughness: 0.03, metalness: 0.3, transparent: true, opacity: 0.88, envMapIntensity: 2.5 }));
+    this.puddles.visible = !!this.game.weather.rain; this.addStatic(this.puddles);
     this.glass = glass.build(this.touch || !A.facadeColor
       ? new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.glass, shininess: 80, specular: new THREE.Color("#8899aa"), emissive: new THREE.Color("#000") })
       : new THREE.MeshStandardMaterial({ vertexColors: true, map: this.tex.glass, metalness: 0.85, roughness: 0.12, emissive: new THREE.Color("#000") }));
@@ -440,7 +478,8 @@ class Renderer3D {
     const pivotTop = new THREE.BoxGeometry(1, 1, 1); pivotTop.translate(0, -0.5, 0);
     const NP = this.touch ? 90 : 140, NV = 60;
     this.I = {
-      leg: P(pivotTop, lam(), NP * 2), arm: P(pivotTop, lam(), NP * 2), body: P(unit, lam(), NP), head: P(new THREE.SphereGeometry(1, 8, 7), lam(), NP),
+      leg: P(pivotTop, lam(), NP * 2), arm: P(pivotTop, lam(), NP * 2), body: P(unit, lam(), NP), head: P(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshLambertMaterial({ color: "#ffffff", map: this.faceTexture() }), NP),
+      neck: P(new THREE.CylinderGeometry(1, 1, 1, 8), lam(), NP), hand: P(new THREE.SphereGeometry(1, 7, 6), lam(), NP * 2), shoe: P(unit, lam(), NP * 2),
       hair: P(new THREE.SphereGeometry(1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), lam(), NP), hat: P(new THREE.CylinderGeometry(1, 1, 1, 8), lam(), NP), brim: P(new THREE.CylinderGeometry(1, 1, 1, 8), lam(), NP),
       umb: P(new THREE.ConeGeometry(1, 1, 8), lam(), NP), pole: P(new THREE.CylinderGeometry(1, 1, 1, 4), lam(), NP), bag: P(unit, lam(), NP),
       dog: P(unit, lam(), 40 * 8),
@@ -451,6 +490,23 @@ class Renderer3D {
     };
     this.I.shadow.mesh.renderOrder = 1;
   }
+  // Eyes, brows and a mouth on a white base; the instance colour tints it to each person's skin. Front of the head is u = 0.5.
+  faceTexture() {
+    return this.canvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "rgba(120,70,40,0.35)"; ctx.fillRect(0, 0, w, h * 0.3);
+      const eye = (x) => {
+        ctx.fillStyle = "#f3efe8"; ctx.beginPath(); ctx.ellipse(x, h * 0.46, 11, 7, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = "#2a1d14"; ctx.beginPath(); ctx.arc(x, h * 0.46, 4.6, 0, 7); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.beginPath(); ctx.arc(x, h * 0.46, 2.2, 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(40,25,15,0.9)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, h * 0.395, 12, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+      };
+      eye(w * 0.5 - 19); eye(w * 0.5 + 19);
+      ctx.strokeStyle = "rgba(90,40,30,0.75)"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(w * 0.5 - 9, h * 0.6); ctx.quadraticCurveTo(w * 0.5, h * 0.63, w * 0.5 + 9, h * 0.6); ctx.stroke();
+      ctx.fillStyle = "rgba(150,90,70,0.35)"; ctx.beginPath(); ctx.ellipse(w * 0.5, h * 0.53, 3, 4, 0, 0, 7); ctx.fill();
+    }, false);
+  }
+  sub(parent, lx, ly, lz, rz) { this.e.set(0, 0, rz); this.q.setFromEuler(this.e); this.v3.set(lx, ly, lz); this.s3.set(1, 1, 1); return new THREE.Matrix4().compose(this.v3, this.q, this.s3).premultiply(parent); }
   // matrix helpers: parent transform (x, z, yaw, extra rotation) * local (pos, euler, scale)
   part(parent, lx, ly, lz, sx, sy, sz, rx = 0, ry = 0, rz = 0) {
     this.e.set(rx, ry, rz); this.q.setFromEuler(this.e); this.v3.set(lx, ly, lz); this.s3.set(sx, sy, sz);
@@ -464,10 +520,20 @@ class Renderer3D {
     if (sc !== 1) F.scale(new THREE.Vector3(sc, sc, sc));
     const skin = p.skin || "#e0ac69", shirt = o.orange ? "#f97316" : (p.shirt || "#64748b"), pants = p.pants || "#1f2937";
     const s = o.moving ? Math.sin(walkT * 10) * 0.7 : 0;
-    I.leg.add(this.part(F, 0, 7, -1.7, 2.6, 7, 2.6, 0, 0, s), pants); I.leg.add(this.part(F, 0, 7, 1.7, 2.6, 7, 2.6, 0, 0, -s), pants);
+    const shoe = p.shoe || "#1c1917", sleeve = o.chef ? "#f8fafc" : shirt;
+    for (const [z, rz] of [[-1.7, s], [1.7, -s]]) {
+      const legM = this.sub(F, 0, 7, z, rz);
+      I.leg.add(this.part(legM, 0, 0, 0, 2.6, 7, 2.6), pants);
+      I.shoe.add(this.part(legM, 0.9, -7.1, 0, 3.6, 1.5, 2.9), shoe);
+    }
     I.body.add(this.part(F, 0, 11, 0, 4.5, 8, 7), shirt);
-    I.arm.add(this.part(F, 0, 14.5, -4.8, 2.2, 7.5, 2.2, 0, 0, -s * 0.8), o.chef ? "#f8fafc" : shirt); I.arm.add(this.part(F, 0, 14.5, 4.8, 2.2, 7.5, 2.2, 0, 0, s * 0.8), o.chef ? "#f8fafc" : shirt);
-    I.head.add(this.part(F, 0, 18.6, 0, 3.2, 3.2, 3.2), skin);
+    I.neck.add(this.part(F, 0, 15.3, 0, 1.5, 1.6, 1.5), skin);
+    for (const [z, rz] of [[-4.8, -s * 0.8], [4.8, s * 0.8]]) {
+      const armM = this.sub(F, 0, 14.5, z, rz);
+      I.arm.add(this.part(armM, 0, 0, 0, 2.2, 7.5, 2.2), sleeve);
+      I.hand.add(this.part(armM, 0, -7.6, 0, 1.3, 1.5, 1.2), skin);
+    }
+    I.head.add(this.part(F, 0, 18.6, 0, 3.1, 3.4, 3.2), skin);
     if (o.chef) { I.hat.add(this.part(F, 0, 23.5, 0, 2.6, 5, 2.6), "#ffffff"); I.bag.add(this.part(F, 2.6, 10, 0, 1, 7, 5), "#e5e7eb"); }
     else if (o.hat || p.hat) { I.hat.add(this.part(F, 0, 21.6, 0, 3.4, 1.8, 3.4), p.hatColor || "#374151"); I.brim.add(this.part(F, 0, 20.8, 0, 4.6, 0.5, 4.6), "#374151"); }
     else if (p.hairStyle !== 2) { I.hair.add(this.part(F, 0, 18.9, 0, 3.4, 3.4, 3.4), p.hair || "#3f2a1d"); if (p.hairStyle === 1) I.bag.add(this.part(F, -2.4, 16.5, 0, 2.5, 6, 5), p.hair || "#3f2a1d"); }
@@ -650,7 +716,7 @@ class Renderer3D {
       }
     }
     for (let i = this.labelUsed; i < this.labelPool.length; i++) this.labelPool[i].style.display = "none";
-    this.gl.render(this.scene, this.camera);
+    if (this.composer) this.composer.render(); else this.gl.render(this.scene, this.camera);
     this.drawMinimap();
   }
   updateCamera(dt) {
@@ -702,7 +768,9 @@ class Renderer3D {
       this.amb.intensity = 0.18 * (1 - night * 0.4);
       this.gl.toneMappingExposure = 1.05 - night * 0.2 + dusk * 0.05;
       const glow = Math.max(0, night * 1.3 + dusk * 0.5 + (rain ? 0.25 : 0));
-      this.bld.material.emissive.setRGB(glow, glow * 0.85, glow * 0.6);
+      for (const m of this.blds) { const cool = m.userData.style === "glass" || m.userData.style === "concrete"; m.material.emissive.setRGB(glow * (cool ? 0.8 : 1), glow * 0.85, glow * (cool ? 1 : 0.6)); }
+      if (this.bloom) { this.bloom.strength = 0.14 + night * 0.42 + (rain ? 0.08 : 0); this.bloom.threshold = 0.8 + day * 0.08; }
+      this.puddles.visible = rain;
       this.glass.material.emissive.setRGB(glow * 0.25, glow * 0.22, glow * 0.16);
       this.bulbs.material.color.copy(c("#d1d5db", "#fff1b8", Math.min(1, glow))); this.lampGlow.material.opacity = Math.min(0.55, glow * 0.45);
       this.stars.material.opacity = night * 0.9;

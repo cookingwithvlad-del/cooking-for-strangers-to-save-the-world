@@ -12,10 +12,12 @@ var Assets3D = window.Assets3D = {
     for (const k of ["sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental", "scooter"]) glb("assets/3d/vehicles/" + k + ".glb", p => { this.vehicles[k] = p; });
     glb("assets/3d/person.glb", p => { this.person = p; });
     glb("assets/3d/props.glb", p => { this.props = this.groupProps(p); });
-    for (const [k, f, lin] of [["facadeColor", "facade_color.jpg"], ["facadeNormal", "facade_normal.jpg", true], ["facadeEmissive", "facade_emissive.jpg"], ["facadeRough", "facade_rough.jpg", true],
-      ["asphaltColor", "asphalt_color.jpg"], ["asphaltNormal", "asphalt_normal.jpg", true], ["asphaltRough", "asphalt_rough.jpg", true],
+    const facades = [["facade", "facade"], ["facadeGlass", "facade_glass"], ["facadeStucco", "facade_stucco"], ["facadeConcrete", "facade_concrete"]];
+    const list = [];
+    for (const [k, f] of facades) list.push([k + "Color", f + "_color.jpg"], [k + "Normal", f + "_normal.jpg", true], [k + "Emissive", f + "_emissive.jpg"], [k + "Rough", f + "_rough.jpg", true]);
+    for (const [k, f, lin] of list.concat([["asphaltColor", "asphalt_color.jpg"], ["asphaltNormal", "asphalt_normal.jpg", true], ["asphaltRough", "asphalt_rough.jpg", true],
       ["concreteColor", "concrete_color.jpg"], ["concreteNormal", "concrete_normal.jpg", true], ["grassColor", "grass_color.jpg"], ["grassNormal", "grass_normal.jpg", true],
-      ["sandColor", "sand_color.jpg"], ["sandNormal", "sand_normal.jpg", true], ["waterNormal", "water_normal.jpg", true]]) tex(k, "assets/3d/tex/" + f, lin);
+      ["sandColor", "sand_color.jpg"], ["sandNormal", "sand_normal.jpg", true], ["waterNormal", "water_normal.jpg", true]])) tex(k, "assets/3d/tex/" + f, lin);
     for (const k of ["morning", "noon", "dusk", "night"]) jobs.push(new Promise(res => texl.load(this.src("assets/3d/sky/" + k + ".jpg"), t => { t.mapping = THREE.EquirectangularReflectionMapping; t.encoding = THREE.sRGBEncoding; this.sky[k] = t; res(); }, undefined, () => res())));
     Promise.all(jobs).then(() => { this.ready = true; onDone && onDone(this); });
   },

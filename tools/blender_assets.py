@@ -143,6 +143,14 @@ def build_vehicle(kind):
         b = prim("cube", "bumper", size=1, location=(x, 0, 4.2)); b.scale = (2.2, W - 0.8, 2.6); bevel(b, 0.6, 2); apply_all(b); dark_parts.append(b)
     g = prim("cube", "grille", size=1, location=(L / 2 - 0.2, 0, 6.3)); g.scale = (0.5, W * 0.45, 1.6); apply_all(g); dark_parts.append(g)
     u = prim("cube", "under", size=1, location=(0, 0, 2.2)); u.scale = (L * 0.78, W * 0.92, 1.4); apply_all(u); dark_parts.append(u)
+    if kind not in ("bus", "van", "foodtruck"):
+        # door seams and handles
+        for sx in (L * 0.22, -L * 0.14):
+            for y in (-hw - 0.05, hw + 0.05):
+                seam = prim("cube", "seam", size=1, location=(sx, y, 6.5)); seam.scale = (0.35, 0.3, 6.5); apply_all(seam); dark_parts.append(seam)
+                hdl = prim("cube", "handle", size=1, location=(sx - 2.5, y + (0.3 if y > 0 else -0.3), 8.6)); hdl.scale = (2.4, 0.5, 0.7); bevel(hdl, 0.2, 2); apply_all(hdl); dark_parts.append(hdl)
+    for x in (L / 2 + 0.2, -L / 2 - 0.2):
+        plate = prim("cube", "plate", size=1, location=(x, 0, 3.6)); plate.scale = (0.3, 5.5, 1.6); apply_all(plate); dark_parts.append(plate)
     if kind not in ("bus",):
         for y in (-hw - 1.2, hw + 1.2):
             m = prim("cube", "mirror", size=1, location=(L * 0.16, y, body_pts[3][1] + 1.2)); m.scale = (1.6, 1.4, 1.2); bevel(m, 0.4, 2); apply_all(m); dark_parts.append(m)
@@ -321,45 +329,114 @@ def bake_surface(name, make_mat, size=512, maps=("color", "normal"), jpg_quality
     if "rough" in maps:
         img = new_image(name + "_r", size, srgb=False); bake([], plane, "ROUGHNESS", img); save_image(img, os.path.join(OUT, "tex", name + "_rough.jpg"), "JPEG", jpg_quality)
 
-def build_facade():
-    """A real facade (recessed windows, sills, lintels, brick) baked onto a flat tile: 4 windows x 8 floors = 64 x 96 game units."""
+FACADE_STYLES = ("brick", "glass", "stucco", "concrete")
+
+def facade_wall_material(style):
+    if style == "brick":
+        return procedural_surface("brickwall", ((0.52, 0.30, 0.22, 1), (0.66, 0.42, 0.30, 1)), 9, 0.35, 0.85, bricks=(34.0, 0.04, (0.6, 0.33, 0.24, 1), (0.5, 0.26, 0.19, 1), (0.74, 0.72, 0.66, 1)))
+    if style == "stucco":
+        return procedural_surface("stucco", ((0.86, 0.80, 0.70, 1), (0.93, 0.89, 0.80, 1)), 18, 0.18, 0.9, detail=7)
+    if style == "concrete":
+        return procedural_surface("concretewall", ((0.56, 0.56, 0.55, 1), (0.68, 0.67, 0.65, 1)), 14, 0.25, 0.85, detail=6, bricks=(3.0, 0.015, (0.64, 0.63, 0.61, 1), (0.6, 0.6, 0.58, 1), (0.42, 0.42, 0.42, 1), 0.0))
+    m, nt, b = mat_nodes("spandrel"); b.inputs["Base Color"].default_value = (0.12, 0.14, 0.17, 1); b.inputs["Roughness"].default_value = 0.35; b.inputs["Metallic"].default_value = 0.6
+    return m
+
+def build_facade(style="brick"):
+    """A real facade baked onto a flat tile: 4 windows x 8 floors = 64 x 96 game units. Styles: brick, glass tower, stucco, concrete office."""
     sc = reset()
     W, H = 64.0, 96.0
     wall = prim("cube", "wall", size=1, location=(0, 1.5, 0)); wall.scale = (W, 3, H); apply_all(wall)
-    brick = procedural_surface("brickwall", ((0.52, 0.30, 0.22, 1), (0.66, 0.42, 0.30, 1)), 9, 0.35, 0.85, bricks=(34.0, 0.04, (0.6, 0.33, 0.24, 1), (0.5, 0.26, 0.19, 1), (0.74, 0.72, 0.66, 1)))
-    wall.data.materials.append(brick)
+    wall.data.materials.append(facade_wall_material(style))
     cutters = []; glasses = []; frames = []
-    random.seed(7)
+    random.seed({"brick": 7, "glass": 11, "stucco": 13, "concrete": 17}[style])
+    lit_p = {"brick": 0.38, "glass": 0.55, "stucco": 0.3, "concrete": 0.4}[style]
+    frame_col = {"brick": (0.82, 0.8, 0.76, 1), "glass": (0.2, 0.22, 0.26, 1), "stucco": (0.96, 0.96, 0.94, 1), "concrete": (0.3, 0.32, 0.35, 1)}[style]
+    def glass_mat(lit, tint):
+        gm, gnt, gb = mat_nodes("glass_%d" % random.randint(0, 1 << 30)); gb.inputs["Base Color"].default_value = tint; gb.inputs["Roughness"].default_value = 0.06
+        if lit: gb.inputs["Emission Color"].default_value = (1.0, 0.78, 0.45, 1); gb.inputs["Emission Strength"].default_value = 1.0
+        return gm
+    def box(name, loc, scale, lst, bev=0):
+        o = prim("cube", name, size=1, location=loc); o.scale = scale
+        if bev: bevel(o, bev, 2)
+        apply_all(o); lst.append(o); return o
     for r in range(8):
+        z = -H / 2 + 7 + r * 12
+        if style == "glass":
+            # curtain wall: full-width glass per floor, spandrel band, slim mullions every 8 units
+            box("cut", (0, 0, z + 1.5), (W + 2, 3, 9.6), cutters)
+            lit = random.random() < lit_p
+            g = box("glass", (0, 1.2, z + 1.5), (W + 2, 0.3, 9.6), glasses); g.data.materials.append(glass_mat(lit, (0.1, 0.14, 0.2, 1)))
+            for c in range(9):
+                box("mullion", (-W / 2 + c * 8, 0.4, z + 1.5), (0.5, 1.6, 9.8), frames)
+            box("transom", (0, 0.4, z + 6.3), (W + 2, 1.6, 0.6), frames)
+            box("sillband", (0, -0.4, z - 3.5), (W + 2, 1.2, 1.4), frames)
+            continue
+        if style == "concrete":
+            # ribbon window per floor split into 7 panes, deep concrete band above
+            box("cut", (0, 0, z + 0.5), (W - 6, 3, 6.4), cutters)
+            lit = random.random() < lit_p
+            g = box("glass", (0, 1.4, z + 0.5), (W - 6, 0.3, 6.4), glasses); g.data.materials.append(glass_mat(lit, (0.08, 0.1, 0.13, 1)))
+            for c in range(8):
+                box("mullion", (-W / 2 + 3 + c * (W - 6) / 7, 0.6, z + 0.5), (0.6, 1.2, 6.6), frames)
+            box("band", (0, -0.9, z + 4.6), (W + 0.2, 2.2, 1.6), frames)
+            box("sill", (0, -0.5, z - 3.1), (W - 5, 1.4, 0.8), frames)
+            continue
         for c in range(4):
-            x = -W / 2 + 8 + c * 16; z = -H / 2 + 7 + r * 12
-            cut = prim("cube", "cut", size=1, location=(x, 0, z)); cut.scale = (10, 3, 7.5); apply_all(cut); cutters.append(cut)
-            g = prim("cube", "glass", size=1, location=(x, 1.3, z)); g.scale = (10, 0.3, 7.5); apply_all(g); glasses.append(g)
-            lit = random.random() < 0.38
-            gm, gnt, gb = mat_nodes("glass_%d_%d" % (r, c)); gb.inputs["Base Color"].default_value = (0.08, 0.1, 0.14, 1); gb.inputs["Roughness"].default_value = 0.08
-            if lit:
-                gb.inputs["Emission Color"].default_value = (1.0, 0.75, 0.42, 1); gb.inputs["Emission Strength"].default_value = 1.0
-            g.data.materials.append(gm)
-            sill = prim("cube", "sill", size=1, location=(x, -0.6, z - 4.1)); sill.scale = (11.2, 1.8, 0.8); apply_all(sill); frames.append(sill)
-            lint = prim("cube", "lintel", size=1, location=(x, -0.3, z + 4.0)); lint.scale = (11.2, 1.0, 0.7); apply_all(lint); frames.append(lint)
-            for fx in (x - 5.1, x + 5.1):
-                f = prim("cube", "jamb", size=1, location=(fx, 0.3, z)); f.scale = (0.5, 2.2, 7.6); apply_all(f); frames.append(f)
-            mull = prim("cube", "mullion", size=1, location=(x, 1.0, z)); mull.scale = (0.45, 0.5, 7.4); apply_all(mull); frames.append(mull)
+            x = -W / 2 + 8 + c * 16
+            if style == "stucco":
+                box("cut", (x, 0, z), (9, 3, 8), cutters)
+                lit = random.random() < lit_p
+                g = box("glass", (x, 1.5, z), (9, 0.3, 8), glasses); g.data.materials.append(glass_mat(lit, (0.1, 0.13, 0.17, 1)))
+                for fx in (x - 4.7, x + 4.7): box("jamb", (fx, 0.2, z), (0.6, 2.4, 8.2), frames)
+                box("lintel", (x, 0.2, z + 4.2), (10.2, 2.4, 0.6), frames)
+                box("mullion", (x, 1.2, z), (0.45, 0.5, 7.8), frames)
+                # balcony: ledge and railing
+                box("ledge", (x, -1.9, z - 4.6), (12, 4.2, 1.2), frames, bev=0.3)
+                box("rail", (x, -3.8, z - 2.2), (12, 0.35, 0.35), frames)
+                for bx in (x - 5.8, x - 2.9, x, x + 2.9, x + 5.8): box("baluster", (bx, -3.8, z - 3.5), (0.3, 0.3, 2.4), frames)
+                if c in (1, 2) and r % 2 == 0: box("shutter", (x + 6.2, -0.2, z), (1.6, 0.4, 8), frames)
+                continue
+            # brick (original)
+            box("cut", (x, 0, z), (10, 3, 7.5), cutters)
+            lit = random.random() < lit_p
+            g = box("glass", (x, 1.3, z), (10, 0.3, 7.5), glasses); g.data.materials.append(glass_mat(lit, (0.08, 0.1, 0.14, 1)))
+            box("sill", (x, -0.6, z - 4.1), (11.2, 1.8, 0.8), frames)
+            box("lintel", (x, -0.3, z + 4.0), (11.2, 1.0, 0.7), frames)
+            for fx in (x - 5.1, x + 5.1): box("jamb", (fx, 0.3, z), (0.5, 2.2, 7.6), frames)
+            box("mullion", (x, 1.0, z), (0.45, 0.5, 7.4), frames)
     select_only(cutters)
     with bpy.context.temp_override(active_object=cutters[0], selected_objects=cutters, selected_editable_objects=cutters): bpy.ops.object.join()
     cutter = bpy.context.view_layer.objects.active
     bo = wall.modifiers.new("win", "BOOLEAN"); bo.operation = "DIFFERENCE"; bo.object = cutter; bo.solver = "EXACT"; apply_all(wall)
     bpy.data.objects.remove(cutter, do_unlink=True)
-    fm, fnt, fb = mat_nodes("frame"); fb.inputs["Base Color"].default_value = (0.82, 0.8, 0.76, 1); fb.inputs["Roughness"].default_value = 0.6
+    fm, fnt, fb = mat_nodes("frame"); fb.inputs["Base Color"].default_value = frame_col; fb.inputs["Roughness"].default_value = 0.55
+    if style == "glass": fb.inputs["Metallic"].default_value = 0.7
     for f in frames: f.data.materials.append(fm)
-    # low-poly target with UVs covering the tile, sitting on the wall's front plane
     target = prim("plane", "facade", size=1, location=(0, -0.01, 0), rotation=(math.radians(90), 0, 0)); target.scale = (W, H, 1); apply_all(target)
     highs = [wall] + glasses + frames
-    size = 1024
-    img = new_image("facade_c", size); bake(highs, target, "DIFFUSE", img, filt={"COLOR"}, cage=6, s2a=True); save_image(img, os.path.join(OUT, "tex", "facade_color.jpg"), "JPEG", 88)
-    img = new_image("facade_n", size, srgb=False); bake(highs, target, "NORMAL", img, cage=6, s2a=True); save_image(img, os.path.join(OUT, "tex", "facade_normal.png"))
-    img = new_image("facade_e", size); bake(highs, target, "EMIT", img, cage=6, s2a=True); save_image(img, os.path.join(OUT, "tex", "facade_emissive.jpg"), "JPEG", 80)
-    img = new_image("facade_r", size, srgb=False); bake(highs, target, "ROUGHNESS", img, cage=6, s2a=True); save_image(img, os.path.join(OUT, "tex", "facade_rough.jpg"), "JPEG", 80)
+    size = 1024; cage = 7
+    prefix = "facade" if style == "brick" else "facade_" + style
+    col = new_image(prefix + "_c", size); bake(highs, target, "DIFFUSE", col, filt={"COLOR"}, cage=cage, s2a=True, samples=1)
+    ao = new_image(prefix + "_ao", size, srgb=False); bake(highs, target, "AO", ao, cage=cage, s2a=True, samples=24)
+    multiply_ao(col, ao, 0.3)
+    save_image(col, os.path.join(OUT, "tex", prefix + "_color.jpg"), "JPEG", 88)
+    img = new_image(prefix + "_n", size, srgb=False); bake(highs, target, "NORMAL", img, cage=cage, s2a=True, samples=1); save_image(img, os.path.join(OUT, "tex", prefix + "_normal.png"))
+    img = new_image(prefix + "_e", size); bake(highs, target, "EMIT", img, cage=cage, s2a=True, samples=1); save_image(img, os.path.join(OUT, "tex", prefix + "_emissive.jpg"), "JPEG", 80)
+    img = new_image(prefix + "_r", size, srgb=False); bake(highs, target, "ROUGHNESS", img, cage=cage, s2a=True, samples=1); save_image(img, os.path.join(OUT, "tex", prefix + "_rough.jpg"), "JPEG", 80)
+
+def multiply_ao(col, ao, floor):
+    """Darken the colour bake by its ambient occlusion: col *= floor + (1 - floor) * ao."""
+    import numpy as np
+    n = col.size[0] * col.size[1] * 4
+    c = np.empty(n, dtype=np.float32); a = np.empty(n, dtype=np.float32)
+    col.pixels.foreach_get(c); ao.pixels.foreach_get(a)
+    c = c.reshape(-1, 4); a = a.reshape(-1, 4)
+    occ = floor + (1 - floor) * a[:, :1]
+    c[:, :3] *= occ
+    col.pixels.foreach_set(c.ravel())
+
+def build_facades():
+    for st in FACADE_STYLES: build_facade(st)
 
 def build_surfaces():
     bake_surface("asphalt", lambda: procedural_surface("asphalt", ((0.17, 0.175, 0.19, 1), (0.25, 0.255, 0.27, 1)), 60, 0.35, 0.78, detail=9, voronoi=18.0), 512, ("color", "normal", "rough"))
@@ -414,7 +491,7 @@ STAGES = {
     "vehicles": lambda: [(reset(), build_vehicle(k)) for k in ("sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental")] and (reset(), build_scooter()),
     "person": lambda: (reset(), build_person()),
     "props": lambda: (reset(), build_props()),
-    "facade": build_facade,
+    "facade": build_facades,
     "surfaces": build_surfaces,
     "sky": render_skies,
 }
