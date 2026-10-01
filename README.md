@@ -8,6 +8,22 @@ No build step. Plain JavaScript, rendered in 3D with Three.js (vendored in `js/v
 
 Draw calls are what kill frame rate on mobile GPUs, so the renderer is built around avoiding them: the whole static city is merged into about ten meshes (roads, sidewalks, parks, buildings, glass, props, signs), and every car, pedestrian, dog, traffic light and contact shadow is drawn through `InstancedMesh` — one draw call per body part for the entire crowd. A typical frame is under 40 draw calls. Phones additionally get pixel ratio 1, fewer lights, no shadow maps (contact shadows instead), a shorter draw distance and fewer clouds and raindrops.
 
+### Built in Blender
+
+The cars, the character, the street props and all the surface textures come out of Blender, run headlessly as the `bpy` Python module by `tools/blender_assets.py`:
+
+```
+python3.11 -m venv bpyenv && bpyenv/bin/pip install "bpy==4.2.23"
+bpyenv/bin/python tools/blender_assets.py            # everything, ~8 minutes on 4 CPU cores
+bpyenv/bin/python tools/blender_assets.py vehicles   # or one stage: vehicles person props facade surfaces sky shrink
+```
+
+- **Vehicles** (`assets/3d/vehicles/*.glb`): bodies extruded from side profiles with bevelled edges and boolean wheel arches, separate glass, trim, wheels and rims, one model per class (sedan, taxi, police, rental, sports, van, food truck, bus, scooter). The game instances each part, so paint colour is per car and the whole traffic costs a few draw calls.
+- **Character** (`person.glb`): rounded limbs, torso, head, hair cap and hat as unit-sized parts the game scales and animates.
+- **Props** (`props.glb`): tree, palm, lamp post, bench, hydrant, traffic light, trash can, merged into the static city.
+- **Textures** (`tex/`): baked with Cycles. The facade is a real wall — recessed windows, sills, lintels, brick bump — baked high-to-low onto a tile as colour, tangent-space normal, roughness and an emissive map of lit windows. Asphalt, concrete, grass, sand and water are procedural materials baked to colour and normal maps.
+- **Skies** (`sky/`): Nishita sky renders at morning, noon, dusk and night, used as reflection environments for car paint, glass and wet roads.
+
 ### The look
 
 A sun that moves across a shaded sky dome through sunrise, noon, dusk and night; ACES filmic tone mapping; humid haze that's thicker in Florida and LA and in the rain; procedural textures for asphalt, concrete, grass, sand, water and building facades whose windows glow at night; storefront glass, awnings and neon signs at street level; traffic lights that cycle; palms in the southern cities; wet roads that pick up headlight and streetlight reflections when it rains; real shadows on desktop.
@@ -72,9 +88,12 @@ js/people.js      pedestrian names, jobs, looks and dialogue
 js/radio.js       procedural car radio (WebAudio step sequencer, four stations)
 js/world.js       procedural city grid: four quadrants, rivers and bridges, beaches, shops, garages
 js/entities.js    vehicle classes (player/traffic/police AI), pedestrians and dogs, strangers
-js/render3d.js    Three.js renderer: merged city geometry, cars, people, lighting, rain, camera, HTML labels
+js/render3d.js    Three.js renderer: merged city geometry, instanced cars and people, lighting, rain, camera, HTML labels
+js/assets3d.js    loads the Blender-built models and textures (optional; primitives stay as fallback)
 js/render.js      2D canvas fallback renderer, minimap, full map
-js/vendor/        three.min.js r128 (MIT)
+js/vendor/        three.min.js r128 + GLTFLoader (MIT)
+tools/blender_assets.py   headless Blender pipeline that builds assets/3d
+assets/3d/        models (glb), baked textures, sky environments
 js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
 js/game.js        game state, mission flow, heat/police, save/load
 js/input.js       keyboard + touch

@@ -16,13 +16,18 @@ class GeoBuilder {
     ng.dispose(); if (ng !== g) g.dispose();
   }
   // Box with texture-space UVs: `unit` world units per texture repeat (uv scaled per face by the face's size).
-  box(x, y, z, w, h, d, color, unit, uvo = 0) {
+  box(x, y, z, w, h, d, color, unit, uvo = 0, unitV) {
     const g = new THREE.BoxGeometry(w, h, d);
     if (unit) {
-      const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-      for (let f = 0; f < 6; f++) { const [fw, fh] = dims[f]; for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * fw / unit + uvo, uv.getY(i) * fh / unit); } }
+      const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]], uvn = unitV || unit;
+      for (let f = 0; f < 6; f++) { const [fw, fh] = dims[f]; for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * fw / unit + uvo, uv.getY(i) * fh / uvn); } }
     }
     g.translate(x, y, z); this.add(g, color);
+  }
+  // A prebuilt geometry (from a Blender export) placed with a matrix.
+  geo(g, color, x, y, z, sx = 1, sy = 1, sz = 1, ry = 0) {
+    const c = g.clone(), m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(sx, sy, sz));
+    c.applyMatrix4(m); this.add(c, color);
   }
   cyl(x, y, z, rt, rb, h, color, seg = 6) { const g = new THREE.CylinderGeometry(rt, rb, h, seg); g.translate(x, y, z); this.add(g, color); }
   sphere(x, y, z, r, color, seg = 6) { const g = new THREE.SphereGeometry(r, seg, seg); g.translate(x, y, z); this.add(g, color); }
@@ -81,6 +86,7 @@ class Renderer3D {
     this.mapCache = document.createElement("canvas"); this.mapCache.width = CITY * 8; this.mapCache.height = CITY * 8; this.mapDirty = true;
     this.labelsEl = document.getElementById("labels"); this.labelPool = []; this.labelUsed = 0;
     this.textures = new Map(); this.lightT = 0; this.envKey = ""; this.m4 = new THREE.Matrix4(); this.m4b = new THREE.Matrix4(); this.q = new THREE.Quaternion(); this.v3 = new THREE.Vector3(); this.s3 = new THREE.Vector3(); this.e = new THREE.Euler();
+    this.staticMeshes = []; this.env = {}; this.envKeyNow = ""; this.V = {};
     this.makeTextures();
     this.buildSky();
     this.buildLights();
@@ -88,6 +94,49 @@ class Renderer3D {
     this.buildInstances();
     this.buildRain();
     this.buildMarkers();
+    if (window.Assets3D) Assets3D.load(() => this.onAssets());
+  }
+  addStatic(mesh) { this.staticMeshes.push(mesh); this.scene.add(mesh); return mesh; }
+  // Blender assets arrived: swap in modeled parts, baked maps and sky reflections, then rebuild the city with real props.
+  onAssets() {
+    const A = Assets3D;
+    if (A.person) for (const k of ["leg", "arm", "body", "head", "hair", "hat"]) if (A.person[k]) this.I[k].mesh.geometry = A.person[k];
+    const shiny = this.touch ? () => new THREE.MeshPhongMaterial({ color: "#ffffff", shininess: 70, specular: new THREE.Color("#99aabb") }) : () => new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.55, roughness: 0.32 });
+    const glassy = this.touch ? () => new THREE.MeshPhongMaterial({ color: "#ffffff", shininess: 120, specular: new THREE.Color("#ccddee") }) : () => new THREE.MeshStandardMaterial({ color: "#ffffff", metalness: 0.9, roughness: 0.08 });
+    const dark = () => new THREE.MeshLambertMaterial({ color: "#ffffff" });
+    const P = (geo, mat, max) => { const p = new Parts(geo, mat, max, this.shadows); this.scene.add(p.mesh); return p; };
+    for (const [kind, parts] of Object.entries(A.vehicles)) {
+      if (!parts.body) continue;
+      this.V[kind] = { body: P(parts.body, shiny(), 40), glass: P(parts.glass || parts.body, glassy(), 40), dark: P(parts.dark || parts.body, dark(), 40) };
+      if (!this.I.wheelG && parts.wheel) { this.I.wheelG = P(parts.wheel, dark(), 240); this.I.rimG = P(parts.rim || parts.wheel, dark(), 240); }
+    }
+    if (!this.touch && this.gl.capabilities.isWebGL2 !== undefined) {
+      try {
+        const pm = new THREE.PMREMGenerator(this.gl); pm.compileEquirectangularShader();
+        for (const [k, t] of Object.entries(A.sky)) this.env[k] = pm.fromEquirectangular(t).texture;
+        pm.dispose();
+      } catch (e) { console.warn("env maps:", e); }
+    }
+    this.rebuildCity();
+  }
+  rebuildCity() {
+    for (const m of this.staticMeshes) { this.scene.remove(m); if (m.geometry) m.geometry.dispose(); }
+    this.staticMeshes = [];
+    this.buildCity();
+    this.envKey = "";
+  }
+  // Surface materials: baked Blender maps when present (PBR on desktop, lighter maps on phones), procedural canvases otherwise.
+  surfaceMat(colorKey, normalKey, roughKey, fallbackMap, extra = {}) {
+    const A = window.Assets3D ? Assets3D.tex : {};
+    const map = A[colorKey] || fallbackMap;
+    if (this.touch || !A[colorKey]) return new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true, map }, extra.lambert || {}));
+    return new THREE.MeshStandardMaterial(Object.assign({ vertexColors: true, map, normalMap: A[normalKey] || null, roughnessMap: A[roughKey] || null, roughness: 1, metalness: 0, normalScale: new THREE.Vector2(0.9, 0.9) }, extra.standard || {}));
+  }
+  prop(b, name, x, z, s = 1, ry = 0, colors = {}) {
+    const P = window.Assets3D && Assets3D.props[name];
+    if (!P) return false;
+    for (const [part, g] of Object.entries(P)) b.geo(g, colors[part] || "#888888", x, 0, z, s, s, s, ry);
+    return true;
   }
   invalidateMap() { this.mapDirty = true; this.rebuildLocks(); }
   resize() { this.gl.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
@@ -196,7 +245,7 @@ class Renderer3D {
       const lx = tx % 5, ly = ty % 5, warm = cid === "fl" || cid === "la";
       if (t === T.ROAD || t === T.BRIDGE) {
         const y = t === T.BRIDGE ? 3 : 0.5;
-        roads.box(cx, y, cz, TILE, t === T.BRIDGE ? 6 : 1, TILE, "#ffffff", 32, h * 3);
+        roads.box(cx, y, cz, TILE, t === T.BRIDGE ? 6 : 1, TILE, "#ffffff", 48, Math.floor(h * 3) * 0.5);
         if (tx % 5 === 0 && ty % 5 !== 0) { props.box(cx, y + 0.65, cz - 8, 1.6, 0.3, 10, "#d8c25a"); props.box(cx, y + 0.65, cz + 8, 1.6, 0.3, 10, "#d8c25a"); }
         else if (ty % 5 === 0 && tx % 5 !== 0) { props.box(cx - 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); props.box(cx + 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); }
         const isCross = tx % 5 === 0 && ty % 5 === 0;
@@ -214,15 +263,13 @@ class Renderer3D {
         }
         if (isCross) {
           for (const [ox, oz] of [[-13, -13], [13, 13]]) {
-            props.cyl(cx + ox, 13, cz + oz, 0.7, 0.9, 26, "#7c828c", 5);
-            props.box(cx + ox + 3, 26, cz + oz, 7, 0.8, 0.8, "#7c828c");
+            if (!this.prop(props, "lamp", cx + ox, cz + oz, 1, 0, { post: "#7c828c", head: "#9aa0a8" })) { props.cyl(cx + ox, 13, cz + oz, 0.7, 0.9, 26, "#7c828c", 5); props.box(cx + ox + 3, 26, cz + oz, 7, 0.8, 0.8, "#7c828c"); }
             bulbs.box(cx + ox + 6, 25.6, cz + oz, 3, 1, 2, "#ffe9a8");
             lampGlow.sphere(cx + ox + 6, 25.2, cz + oz, 3, "#ffd58a", 8);
           }
           // traffic light heads on two diagonal corners
           for (const [ox, oz, rot] of [[-13, 13, 0], [13, -13, Math.PI]]) {
-            props.cyl(cx + ox, 12, cz + oz, 0.6, 0.7, 24, "#3f3f46", 5);
-            props.box(cx + ox, 22, cz + oz, 3, 9, 3, "#27272a");
+            if (!this.prop(props, "trafficlight", cx + ox, cz + oz, 1, Math.PI, { pole: "#3f3f46", head: "#27272a", hood: "#111111" })) { props.cyl(cx + ox, 12, cz + oz, 0.6, 0.7, 24, "#3f3f46", 5); props.box(cx + ox, 22, cz + oz, 3, 9, 3, "#27272a"); }
           }
         }
       } else if (isWalkable(t)) {
@@ -230,10 +277,10 @@ class Renderer3D {
         b.box(cx, 1, cz, TILE, 2, TILE, t === T.GARAGE ? "#9ca3af" : warm && t === T.SIDEWALK ? "#e8e0d0" : "#ffffff", 32, h);
         for (const [dx, dy] of DIRS) { if (w.get(tx + dx, ty + dy) === T.ROAD) props.box(cx + dx * 15.5, 1.6, cz + dy * 15.5, dx ? 1 : TILE, 1.2, dy ? 1 : TILE, "#d4d7dd"); }
         if (t === T.SIDEWALK) {
-          if (h < 0.05) { props.box(cx, 4, cz, 6, 6, 6, "#374151"); props.box(cx, 7.5, cz, 7, 1, 7, "#1f2937"); }
-          else if (h < 0.09) { props.box(cx, 5, cz, 20, 1.5, 5, "#6b4f2a"); props.box(cx, 8, cz - 2.5, 20, 5, 1.2, "#6b4f2a"); props.box(cx - 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); props.box(cx + 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); }
+          if (h < 0.05) { if (!this.prop(props, "trash", cx, cz, 0.8, h * 6, { body: "#4b5563", lid: "#1f2937" })) { props.box(cx, 4, cz, 6, 6, 6, "#374151"); props.box(cx, 7.5, cz, 7, 1, 7, "#1f2937"); } }
+          else if (h < 0.09) { if (!this.prop(props, "bench", cx, cz, 1, 0, { wood: "#8b5a2b", iron: "#2d2d33" })) { props.box(cx, 5, cz, 20, 1.5, 5, "#6b4f2a"); props.box(cx, 8, cz - 2.5, 20, 5, 1.2, "#6b4f2a"); props.box(cx - 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); props.box(cx + 8, 2.5, cz, 1.5, 3, 5, "#4b3a20"); } }
           else if (h < 0.16) { if (warm) this.palm(props, cx, cz, h); else this.tree(props, cx, cz, cid, h); }
-          else if (h < 0.19) { props.cyl(cx, 5, cz, 2, 2.2, 8, "#b91c1c", 6); props.sphere(cx, 9.5, cz, 2.2, "#7f1d1d", 5); }
+          else if (h < 0.19) { if (!this.prop(props, "hydrant", cx, cz, 0.8, 0, { body: "#b91c1c" })) { props.cyl(cx, 5, cz, 2, 2.2, 8, "#b91c1c", 6); props.sphere(cx, 9.5, cz, 2.2, "#7f1d1d", 5); } }
           else if (h < 0.22 && cid === "ny") { props.box(cx, 7, cz, 8, 12, 8, "#1d4ed8"); props.box(cx, 13.5, cz, 8.5, 1.5, 8.5, "#1e3a8a"); }
           else if (h < 0.25) { props.box(cx, 6, cz, 6, 12, 6, "#ef4444"); props.box(cx, 12.5, cz, 6.5, 1, 6.5, "#991b1b"); }
         } else if (t === T.PARK) {
@@ -255,12 +302,13 @@ class Renderer3D {
       } else if (t === T.BUILDING) {
         const bx = Math.floor(tx / 5), by = Math.floor(ty / 5);
         const hh = blockHeight(bx, by) + (this.hash(tx * 5, ty * 3) < 0.3 ? 14 : 0);
-        const tint = new THREE.Color(CITIES[cid].color).lerp(new THREE.Color("#ffffff"), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.08);
-        bld.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, this.hash(tx + 3, ty + 9) * 4);
+        const baked = window.Assets3D && Assets3D.tex.facadeColor;
+        const tint = baked ? new THREE.Color("#ffffff").lerp(new THREE.Color(CITIES[cid].color), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.1) : new THREE.Color(CITIES[cid].color).lerp(new THREE.Color("#ffffff"), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.08);
+        bld.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, Math.floor(this.hash(tx + 3, ty + 9) * 4) * 0.25, 96);
         props.box(cx, hh + 0.9, cz, TILE + 0.6, 1.8, TILE + 0.6, CITIES[cid].roof);
         if (this.hash(tx + 7, ty + 3) < 0.35) props.box(cx + (h - 0.5) * 12, hh + 4, cz + (this.hash(ty, tx) - 0.5) * 12, 8, 6, 8, "#9aa3ad");
         if (this.hash(tx + 11, ty + 5) < 0.1) { props.box(cx, hh + 3, cz, 10, 4, 10, "#cbd5e1"); props.cyl(cx, hh + 12, cz, 0.5, 0.5, 14, "#e5e7eb", 4); props.cyl(cx, hh + 9, cz, 3.5, 3.5, 6, "#8b5a2b", 8); }
-        if (hh > 100 && this.hash(tx + 2, ty + 8) < 0.5) bld.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 1);
+        if (hh > 100 && this.hash(tx + 2, ty + 8) < 0.5) bld.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 0.25, 96);
         for (let d = 0; d < 4; d++) {
           const [dx, dy] = DIRS[d];
           const nt = w.get(tx + dx, ty + dy);
@@ -289,18 +337,31 @@ class Renderer3D {
         }
       }
     }
-    const lam = (map, extra) => new THREE.MeshLambertMaterial(Object.assign({ vertexColors: true, map }, extra || {}));
-    this.roads = roads.build(new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.asphalt, shininess: 6, specular: new THREE.Color("#1a1a1a") }));
-    const groundMeshes = [this.roads, walks.build(lam(this.tex.concrete)), grass.build(lam(this.tex.grass)), sand.build(lam(this.tex.sand))];
-    for (const m of groundMeshes) { m.receiveShadow = this.shadows; this.scene.add(m); }
-    this.bld = bld.build(new THREE.MeshLambertMaterial({ vertexColors: true, map: this.tex.facade, emissiveMap: this.tex.facadeLit, emissive: new THREE.Color("#000000") }));
-    this.bld.castShadow = this.shadows; this.bld.receiveShadow = this.shadows; this.scene.add(this.bld);
-    this.glass = glass.build(new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.glass, shininess: 80, specular: new THREE.Color("#8899aa"), emissive: new THREE.Color("#000") })); this.scene.add(this.glass);
-    this.props = props.build(new THREE.MeshLambertMaterial({ vertexColors: true })); this.props.castShadow = this.shadows; this.props.receiveShadow = this.shadows; this.scene.add(this.props);
-    this.bulbs = bulbs.build(new THREE.MeshBasicMaterial({ vertexColors: true })); this.scene.add(this.bulbs);
-    this.lampGlow = lampGlow.build(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.scene.add(this.lampGlow);
-    this.water = water.build(new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.water, transparent: true, opacity: 0.92, shininess: 120, specular: new THREE.Color("#ffffff") })); this.scene.add(this.water);
-    this.signs = signs.build(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.tex.signs, transparent: true, side: THREE.FrontSide })); this.scene.add(this.signs);
+    const A = window.Assets3D ? Assets3D.tex : {};
+    const roadMat = this.touch || !A.asphaltColor
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, map: A.asphaltColor || this.tex.asphalt, shininess: 6, specular: new THREE.Color("#1a1a1a") })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, map: A.asphaltColor, normalMap: A.asphaltNormal || null, roughnessMap: A.asphaltRough || null, roughness: 1, metalness: 0, normalScale: new THREE.Vector2(0.7, 0.7) });
+    this.roads = roads.build(roadMat);
+    const groundMeshes = [this.roads, walks.build(this.surfaceMat("concreteColor", "concreteNormal", null, this.tex.concrete)), grass.build(this.surfaceMat("grassColor", "grassNormal", null, this.tex.grass)), sand.build(this.surfaceMat("sandColor", "sandNormal", null, this.tex.sand))];
+    for (const m of groundMeshes) { m.receiveShadow = this.shadows; this.addStatic(m); }
+    if (A.facadeColor) {
+      this.bld = bld.build(this.touch
+        ? new THREE.MeshLambertMaterial({ vertexColors: true, map: A.facadeColor, emissiveMap: A.facadeEmissive || null, emissive: new THREE.Color("#000000") })
+        : new THREE.MeshStandardMaterial({ vertexColors: true, map: A.facadeColor, normalMap: A.facadeNormal || null, roughnessMap: A.facadeRough || null, emissiveMap: A.facadeEmissive || null, emissive: new THREE.Color("#000000"), roughness: 1, metalness: 0, normalScale: new THREE.Vector2(1.2, 1.2) }));
+    } else this.bld = bld.build(new THREE.MeshLambertMaterial({ vertexColors: true, map: this.tex.facade, emissiveMap: this.tex.facadeLit, emissive: new THREE.Color("#000000") }));
+    this.bld.castShadow = this.shadows; this.bld.receiveShadow = this.shadows; this.addStatic(this.bld);
+    this.glass = glass.build(this.touch || !A.facadeColor
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.glass, shininess: 80, specular: new THREE.Color("#8899aa"), emissive: new THREE.Color("#000") })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, map: this.tex.glass, metalness: 0.85, roughness: 0.12, emissive: new THREE.Color("#000") }));
+    this.addStatic(this.glass);
+    this.props = props.build(new THREE.MeshLambertMaterial({ vertexColors: true })); this.props.castShadow = this.shadows; this.props.receiveShadow = this.shadows; this.addStatic(this.props);
+    this.bulbs = bulbs.build(new THREE.MeshBasicMaterial({ vertexColors: true })); this.addStatic(this.bulbs);
+    this.lampGlow = lampGlow.build(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); this.addStatic(this.lampGlow);
+    this.water = water.build(this.touch || !A.waterNormal
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, map: this.tex.water, transparent: true, opacity: 0.92, shininess: 120, specular: new THREE.Color("#ffffff") })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, map: this.tex.water, normalMap: A.waterNormal, normalScale: new THREE.Vector2(0.6, 0.6), transparent: true, opacity: 0.92, roughness: 0.08, metalness: 0.1 }));
+    this.addStatic(this.water);
+    this.signs = signs.build(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.tex.signs, transparent: true, side: THREE.FrontSide })); this.addStatic(this.signs);
     this.lampPosts = [];
     this.trafficHeads = [];
     for (let ty = 0; ty < CITY; ty += 5) for (let tx = 0; tx < CITY; tx += 5) if (w.get(tx, ty) === T.ROAD) {
@@ -308,16 +369,18 @@ class Renderer3D {
       this.lampPosts.push({ x: cx - 13 + 6, z: cz - 13 }, { x: cx + 13 + 6, z: cz + 13 });
       this.trafficHeads.push({ x: cx - 13, z: cz + 13, phase: this.hash(tx, ty), ns: true }, { x: cx + 13, z: cz - 13, phase: this.hash(tx, ty), ns: false });
     }
-    this.locks = new THREE.Group(); this.scene.add(this.locks);
+    if (!this.locks) { this.locks = new THREE.Group(); this.scene.add(this.locks); }
     this.rebuildLocks();
   }
   tree(b, x, z, cid, h) {
     const s = 0.8 + h * 0.7;
+    if (this.prop(b, "tree", x, z, s * 0.95, h * 6.28, { trunk: "#6b4f2a", leaves: cid === "la" ? "#3f7d2f" : "#2f6b2a" })) return;
     b.cyl(x, 5 * s, z, 1.2, 1.6, 10 * s, "#6b4f2a", 5);
     b.sphere(x, 13 * s, z, 7 * s, cid === "la" ? "#3f7d2f" : "#2f6b2a", 6);
     b.sphere(x - 2 * s, 16 * s, z - 2 * s, 4 * s, "#5ea34e", 5);
   }
   palm(b, x, z, h) {
+    if (this.prop(b, "palm", x, z, 0.8 + h * 0.5, h * 6.28, { trunk: "#a0845c", leaves: "#2f8f3a" })) return;
     const H = 22 + h * 16;
     b.cyl(x, H / 2, z, 1.1, 1.9, H, "#a0845c", 5);
     for (let i = 0; i < 7; i++) { const a = i * 0.9 + h * 3; const g = new THREE.BoxGeometry(16, 0.7, 3.5); g.translate(8, 0, 0); g.rotateZ(-0.45); g.rotateY(a); g.translate(x, H, z); b.add(g, i % 2 ? "#2f8f3a" : "#3aa347"); }
@@ -422,6 +485,40 @@ class Renderer3D {
     const I = this.I, L = v.len, W = v.wid, F = this.frame(v.x, 0, v.y, v.angle), g = this.game;
     const spin = (g.time * v.speed) / 3.2;
     I.shadow.add(this.part(F, 0, 0.3, 0, L / 2 + 2, 1, W / 2 + 2), "#000000");
+    const M = this.V[v.kind];
+    if (M) {
+      // Blender-modeled body; lights, signs and smoke stay instanced boxes placed on its real roof line
+      const roof = { sedan: 15, taxi: 15, police: 15, rental: 15, sports: 12.6, van: 19.5, foodtruck: 20.5, bus: 21, scooter: 8 }[v.kind] || 15;
+      M.body.add(this.part(F, 0, 0, 0, 1, 1, 1), v.color);
+      M.glass.add(this.part(F, 0, 0, 0, 1, 1, 1), "#4f6f94");
+      M.dark.add(this.part(F, 0, 0, 0, 1, 1, 1), "#2a2f3a");
+      const wx = v.kind === "scooter" ? [[-L / 2 + 3, 0], [L / 2 - 3, 0]] : [[-L * 0.32, -W / 2], [-L * 0.32, W / 2], [L * 0.32, -W / 2], [L * 0.32, W / 2]];
+      for (const [x, z] of wx) { I.wheelG.add(this.part(F, x, 3.2, z, 1, 1, 1, 0, 0, spin), "#1a1d23"); I.rimG.add(this.part(F, x, 3.2, z, 1, 1, 1, 0, 0, spin), "#a1a7b0"); }
+      if (v.kind === "scooter") {
+        const rider = v.driver === "player" ? { skin: "#e0ac69", shirt: "#f8fafc", pants: "#1f2937" } : (v.rider || (v.rider = { skin: "#c68642", shirt: "#22c55e", hair: "#1c1917", hairStyle: 0, pants: "#374151" }));
+        this.drawPerson(v.x - Math.cos(v.angle) * 2, 3, v.y - Math.sin(v.angle) * 2, v.angle, rider, 0, { scale: 0.8, chef: v.driver === "player", noShadow: true });
+        I.carLight.add(this.part(F, L / 2, 6, 0, 0.6, 1.5, 3), night ? "#fff7cc" : "#d6d3c4");
+        return;
+      }
+      for (const s of [-1, 1]) {
+        I.carLight.add(this.part(F, L / 2 + 0.3, 6, s * (W / 2 - 2.8), 0.8, 2, 3.2), night ? "#fff7cc" : "#e8e4d0");
+        I.carLight.add(this.part(F, -L / 2 - 0.3, 6.2, s * (W / 2 - 2.8), 0.8, 2, 3.2), v.braking ? "#ff2d2d" : v.reversing ? "#f8fafc" : night ? "#c81e3a" : "#8f1d2c");
+      }
+      if (v.kind === "taxi") I.carLight.add(this.part(F, -L * 0.06, roof + 1.4, 0, 7, 2.5, 3), "#fde68a");
+      if (v.kind === "rental") I.carDark.add(this.part(F, -L * 0.06, roof + 0.25, 0, L * 0.4, 0.4, 4), "#e11d48");
+      if (v.kind === "sports") I.carDark.add(this.part(F, 2, 8.5, 0, L * 0.4, 0.3, 3), "#f8fafc");
+      if (v.kind === "foodtruck") { I.carDark.add(this.part(F, -6, 13, W / 2 + 0.3, L * 0.5, 6, 0.6), "#ffffff"); I.carLight.add(this.part(F, -6, 13, W / 2 + 0.7, L * 0.45, 4, 0.3), night ? "#fde68a" : "#f5f5f4"); }
+      if (v.kind === "bus") I.carDark.add(this.part(F, 0, 7.5, 0, L - 4, 2, W + 0.5), "#1d4ed8");
+      if (v.kind === "police") {
+        I.carDark.add(this.part(F, -L * 0.06, roof + 0.9, 0, 3, 1.5, W * 0.7), "#111111");
+        const on = Math.floor(g.time * 8) % 2 === 0;
+        I.carLight.add(this.part(F, -L * 0.06, roof + 1.8, -W * 0.18, 2.5, 2, W * 0.3), on ? "#ff3b3b" : "#7f1d1d");
+        I.carLight.add(this.part(F, -L * 0.06, roof + 1.8, W * 0.18, 2.5, 2, W * 0.3), on ? "#3b82f6" : "#1e3a8a");
+        for (const s of [-1, 1]) I.carDark.add(this.part(F, 0, 7.5, s * (W / 2 + 0.3), L - 8, 3, 0.4), "#1d4ed8");
+      }
+      if (v.hp < v.maxHp * 0.35) for (let i = 0; i < 3; i++) I.smoke.add(this.part(F, L / 2 - 2 - i * 5, roof - 2 + i * 4 + Math.sin(g.time * 5 + i) * 1.5, 0, 2 + i, 2 + i, 2 + i), v.dead ? "#4b5563" : "#9ca3af");
+      return;
+    }
     if (v.kind === "scooter") {
       I.carBody.add(this.part(F, 0, 4, 0, L, 4, W), v.color);
       for (const x of [-L / 2 + 3, L / 2 - 3]) I.wheel.add(this.part(F, x, 3, 0, 3, 2, 3, Math.PI / 2, 0, spin), "#1f2937");
@@ -532,6 +629,7 @@ class Renderer3D {
       this.I.tl.add(this.part(F, 0, 19, 1.9, 0.9, 0.9, 0.9), green && !amber ? "#22e07a" : "#0f3a20");
     }
     for (const k in this.I) this.I[k].end();
+    for (const k in this.V) for (const p of Object.values(this.V[k])) p.end();
 
     this.fareBeam.visible = !!g.fare;
     if (g.fare) { this.fareBeam.position.set(g.fare.dest.x, 45, g.fare.dest.y); this.label(g.fare.dest.x, 95, g.fare.dest.y, "DROP-OFF", "lbl name"); }
@@ -608,8 +706,12 @@ class Renderer3D {
       this.glass.material.emissive.setRGB(glow * 0.25, glow * 0.22, glow * 0.16);
       this.bulbs.material.color.copy(c("#d1d5db", "#fff1b8", Math.min(1, glow))); this.lampGlow.material.opacity = Math.min(0.55, glow * 0.45);
       this.stars.material.opacity = night * 0.9;
-      this.roads.material.shininess = rain ? 90 : 6; this.roads.material.specular.set(rain ? "#9aa4b0" : "#1a1a1a"); this.roads.material.color.set(rain ? "#7a8290" : "#ffffff");
+      const rm = this.roads.material;
+      if (rm.isMeshStandardMaterial) { rm.roughness = rain ? 0.22 : 1; rm.color.set(rain ? "#8a919c" : "#ffffff"); rm.envMapIntensity = rain ? 1.6 : 0.5; }
+      else { rm.shininess = rain ? 90 : 6; rm.specular.set(rain ? "#9aa4b0" : "#1a1a1a"); rm.color.set(rain ? "#7a8290" : "#ffffff"); }
       this.water.material.opacity = rain ? 0.96 : 0.92;
+      const bucket = elev > 0.5 ? "noon" : elev > 0.08 ? "morning" : elev > -0.08 ? "dusk" : "night";
+      if (this.env[bucket] && this.scene.environment !== this.env[bucket]) this.scene.environment = this.env[bucket];
       this.rain.visible = rain;
       for (const s of this.clouds.children) { s.material.opacity = rain ? 0.95 : 0.8 * (0.4 + day * 0.6); s.material.color.copy(c("#aab4c8", "#ffffff", day).lerp(new THREE.Color("#ffb08a"), dusk * 0.5)); }
     }
@@ -619,6 +721,7 @@ class Renderer3D {
     if (this.shadows) { this.sun.shadow.camera.updateProjectionMatrix(); }
     for (const s of this.clouds.children) { s.position.x += s.userData.v * dt; if (s.position.x > this.camera.position.x + 1600) s.position.x -= 3200; if (s.position.x < this.camera.position.x - 1600) s.position.x += 3200; }
     this.water.material.map.offset.x = (g.time * 0.012) % 1; this.water.material.map.offset.y = (g.time * 0.007) % 1;
+    if (this.water.material.normalMap) { this.water.material.normalMap.offset.x = (g.time * 0.02) % 1; this.water.material.normalMap.offset.y = (g.time * 0.013) % 1; }
     this.lightT -= dt;
     if (this.lightT <= 0) {
       this.lightT = 0.4;
