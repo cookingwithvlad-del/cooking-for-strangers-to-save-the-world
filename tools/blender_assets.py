@@ -296,6 +296,109 @@ def build_hero():
     cube("sleeve", (0, 0, -1.8), (2.7, 2.7, 4.0), 0.4)      # rolled / jacket sleeve on the arm
     export_glb(parts, os.path.join(OUT, "hero.glb"))
 
+
+# ------------------------------------------------------------------ photo-projected heads
+# A sculpted base head (eye sockets, brow, nose, cheekbones, jaw, chin) with the character sheet's front and
+# profile shots projected onto it from two directions and baked into one skin texture per character.
+REF = os.path.join(ROOT, "assets", "ref")
+# Crop boxes are top-left pixel coords on the sheet; landmarks are pixels inside the crop.
+FACES = {
+    "vlad":     {"front": dict(box=(0, 615, 483, 1050), cx=245, eye=178, chin=350, width=270), "side": dict(box=(965, 615, 1448, 1050), ear=195, nose=418, eye=178, chin=335)},
+    "anthony":  {"front": dict(box=(0, 615, 483, 1050), cx=240, eye=205, chin=345, width=235), "side": dict(box=(965, 615, 1448, 1050), ear=210, nose=375, eye=205, chin=340)},
+    "orly":     {"front": dict(box=(0, 615, 483, 1050), cx=235, eye=170, chin=310, width=240), "side": dict(box=(965, 615, 1448, 1050), ear=195, nose=370, eye=172, chin=300)},
+    "alex":     {"front": dict(box=(232, 0, 420, 290), cx=95, eye=125, chin=215, width=120), "side": dict(box=(762, 0, 932, 290), ear=120, nose=30, eye=128, chin=215)},
+    "jeanphil": {"front": dict(box=(150, 640, 440, 1010), cx=150, eye=130, chin=250, width=150), "side": dict(box=(580, 20, 700, 150), ear=55, nose=100, eye=45, chin=85)},
+}
+EYE_Z, CHIN_Z, NOSE_X, HEAD_W = 0.45, -3.3, 3.9, 6.1
+
+def crop_sheet(name, which, box):
+    import numpy as np
+    im = bpy.data.images.load(os.path.join(REF, name + ".jpg")); W, H = im.size
+    px = np.empty(W * H * 4, dtype=np.float32); im.pixels.foreach_get(px); px = px.reshape(H, W, 4)[::-1]
+    x0, y0, x1, y1 = box; sub = np.ascontiguousarray(px[y0:y1, x0:x1][::-1])
+    out = bpy.data.images.new(f"{name}_{which}", x1 - x0, y1 - y0); out.pixels.foreach_set(sub.ravel())
+    return out, x1 - x0, y1 - y0
+
+def sculpt_head():
+    """Base head from a UV sphere, shaped by analytic displacement. Front is +x, up is +z."""
+    o = prim("uv_sphere", "head", radius=3.2, segments=40, ring_count=30, location=(0, 0, 0))
+    o.scale = (0.95, 0.98, 1.08); apply_all(o)
+    import bmesh
+    from mathutils import Vector
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    def bump(v, cx, cy, cz, r, amt, ax=1.0):
+        d = Vector((v.co.x - cx, v.co.y - cy, v.co.z - cz)).length / r
+        if d < 1: return amt * (1 - d * d) ** 2 * ax
+        return 0.0
+    for v in bm.verts:
+        x, y, z = v.co.x, v.co.y, v.co.z
+        n = v.co.normalized()
+        off = 0.0
+        if x > 0:
+            off -= 0.22 * (x / 3.2) ** 2                       # flatter face plane
+            off -= bump(v, 2.9, 1.25, 0.45, 1.05, 0.42)        # eye sockets
+            off -= bump(v, 2.9, -1.25, 0.45, 1.05, 0.42)
+            off += bump(v, 3.1, 0, 1.15, 1.6, 0.16)            # brow ridge
+            off += bump(v, 3.0, 0, -0.5, 1.1, 0.95)            # nose
+            off += bump(v, 3.2, 0, -1.1, 0.7, 0.35)            # nose tip
+            off += bump(v, 2.2, 2.4, -0.5, 1.3, 0.25)          # cheekbones
+            off += bump(v, 2.2, -2.4, -0.5, 1.3, 0.25)
+            off -= bump(v, 3.0, 0, -1.75, 0.8, 0.18)           # mouth
+            off += bump(v, 2.8, 0, -2.6, 1.0, 0.4)             # chin
+        else:
+            off += 0.12 * (-x / 3.2)                           # fuller back of head
+        v.co += n * off
+        if z < -1.4:                                           # jaw taper
+            k = 1 - 0.16 * min(1.0, (-z - 1.4) / 1.9)
+            v.co.y *= k
+            if x > 0: v.co.x *= 1 - 0.05 * min(1.0, (-z - 1.4) / 1.9)
+    bm.to_mesh(o.data); bm.free()
+    smooth(o, 80)
+    return o
+
+def project_uvs(o, cfg_front, wf, hf, cfg_side, ws, hs):
+    me = o.data
+    uvf = me.uv_layers.new(name="front"); uvs = me.uv_layers.new(name="side")
+    sxf = cfg_front["width"] / HEAD_W; syf = (cfg_front["chin"] - cfg_front["eye"]) / (EYE_Z - CHIN_Z)
+    sxs = (cfg_side["nose"] - cfg_side["ear"]) / NOSE_X; sys_ = (cfg_side["chin"] - cfg_side["eye"]) / (EYE_Z - CHIN_Z)
+    for poly in me.polygons:
+        for li in poly.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            u = (cfg_front["cx"] - co.y * sxf) / wf; v = 1 - (cfg_front["eye"] + (EYE_Z - co.z) * syf) / hf
+            uvf.data[li].uv = (min(0.999, max(0.001, u)), min(0.999, max(0.001, v)))
+            u = (cfg_side["ear"] + co.x * sxs) / ws; v = 1 - (cfg_side["eye"] + (EYE_Z - co.z) * sys_) / hs
+            uvs.data[li].uv = (min(0.999, max(0.001, u)), min(0.999, max(0.001, v)))
+    me.uv_layers.active = me.uv_layers["UVMap"]
+
+def face_material(img_front, img_side):
+    m, nt, bsdf = mat_nodes("face"); bsdf.inputs["Roughness"].default_value = 0.6
+    tf = nt.nodes.new("ShaderNodeTexImage"); tf.image = img_front; tf.extension = "EXTEND"
+    ts = nt.nodes.new("ShaderNodeTexImage"); ts.image = img_side; ts.extension = "EXTEND"
+    mf = nt.nodes.new("ShaderNodeUVMap"); mf.uv_map = "front"; ms = nt.nodes.new("ShaderNodeUVMap"); ms.uv_map = "side"
+    nt.links.new(mf.outputs[0], tf.inputs[0]); nt.links.new(ms.outputs[0], ts.inputs[0])
+    geo = nt.nodes.new("ShaderNodeNewGeometry"); sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(geo.outputs["Normal"], sep.inputs[0])
+    rng = nt.nodes.new("ShaderNodeMapRange"); rng.inputs["From Min"].default_value = 0.25; rng.inputs["From Max"].default_value = 0.75
+    nt.links.new(sep.outputs["X"], rng.inputs["Value"])
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
+    nt.links.new(rng.outputs[0], mix.inputs["Factor"]); nt.links.new(ts.outputs["Color"], mix.inputs[6]); nt.links.new(tf.outputs["Color"], mix.inputs[7])
+    nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
+    return m
+
+def build_faces(names=None):
+    for name in names or FACES:
+        reset()
+        cfg = FACES[name]
+        imf, wf, hf = crop_sheet(name, "front", cfg["front"]["box"]); ims, ws, hs = crop_sheet(name, "side", cfg["side"]["box"])
+        head = sculpt_head()
+        project_uvs(head, cfg["front"], wf, hf, cfg["side"], ws, hs)
+        head.data.materials.append(face_material(imf, ims))
+        img = new_image(name + "_face", 512)
+        bake([], head, "DIFFUSE", img, filt={"COLOR"}, samples=1)
+        save_image(img, os.path.join(OUT, "faces", name + ".jpg"), "JPEG", 90)
+        if name == list(FACES)[0]:
+            head.data.materials.clear()
+            export_glb([head], os.path.join(OUT, "head.glb"))
+
 # ------------------------------------------------------------------ props
 def build_props():
     objs = []
@@ -588,6 +691,7 @@ STAGES = {
     "person": lambda: (reset(), build_person()),
     "props": lambda: (reset(), build_props()),
     "hero": lambda: (reset(), build_hero()),
+    "faces": build_faces,
     "facade": build_facades,
     "surfaces": build_surfaces,
     "sky": render_skies,

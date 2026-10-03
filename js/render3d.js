@@ -530,13 +530,17 @@ class Renderer3D {
     add(body, "neck", H.skin, 0, 18.6, 0);
     if (H.necklace) add(body, "necklace", "#d4d4d8", 0, 18.6, 0);
     const bodyMesh = body.build(lam()); grp.add(bodyMesh);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(3.2, 20, 16), new THREE.MeshLambertMaterial({ color: H.skin, map: this.heroFace(H) }));
-    head.scale.set(0.95, 1.08, 0.98); head.position.y = 18.6; grp.add(head);
+    let head;
+    if (Assets3D.head && Assets3D.faces[id]) head = new THREE.Mesh(Assets3D.head, new THREE.MeshLambertMaterial({ color: "#ffffff", map: Assets3D.faces[id] }));
+    else { head = new THREE.Mesh(new THREE.SphereGeometry(3.2, 20, 16), new THREE.MeshLambertMaterial({ color: H.skin, map: this.heroFace(H) })); head.scale.set(0.95, 1.08, 0.98); }
+    head.position.y = 18.6; grp.add(head);
+    const photo = !!(Assets3D.head && Assets3D.faces[id]);
     const gear = new GeoBuilder();
-    add(gear, "nose", H.skin, 0, 18.6, 0); add(gear, "ear", H.skin, 0, 18.6, 0);
-    if (!H.toque || H.hairStyle !== "short") add(gear, "hair_" + H.hairStyle, H.hair, 0, 18.6, 0);
-    if (H.beard) add(gear, "beard", H.beard, 0, 18.6, 0);
-    if (H.mustache) add(gear, "mustache", H.mustache, 0, 18.6, 0);
+    if (!photo) { add(gear, "nose", H.skin, 0, 18.6, 0); }
+    add(gear, "ear", H.skin, 0, 18.6, 0);
+    if (!H.toque || H.hairStyle !== "short") { const lift = !photo ? 0 : H.hairStyle === "curly" ? 1.0 : 0.45; add(gear, "hair_" + H.hairStyle, H.hair, photo ? (H.hairStyle === "curly" ? -0.2 : 0.15) : 0, 18.6 + lift, 0); }
+    if (H.beard && !photo) add(gear, "beard", H.beard, 0, 18.6, 0);
+    if (H.mustache && !photo) add(gear, "mustache", H.mustache, 0, 18.6, 0);
     if (H.toque) add(gear, "toque", "#141518", 0, 18.6, 0);
     if (H.headphones) add(gear, "headphones", "#111111", 0, 18.6, 0);
     if (H.earring) add(gear, "earring", "#c0c0c0", 0, 18.6, 0);

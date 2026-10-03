@@ -15,12 +15,13 @@ The cars, the character, the street props and all the surface textures come out 
 ```
 python3.11 -m venv bpyenv && bpyenv/bin/pip install "bpy==4.2.23"
 bpyenv/bin/python tools/blender_assets.py            # everything, ~8 minutes on 4 CPU cores
-bpyenv/bin/python tools/blender_assets.py vehicles   # or one stage: vehicles person props facade surfaces sky shrink
+bpyenv/bin/python tools/blender_assets.py vehicles   # or one stage: vehicles person props hero faces facade surfaces sky shrink
 ```
 
 - **Vehicles** (`assets/3d/vehicles/*.glb`): bodies extruded from side profiles with bevelled edges and boolean wheel arches, separate glass, trim, wheels and rims, one model per class (sedan, taxi, police, rental, sports, van, food truck, bus, scooter). The game instances each part, so paint colour is per car and the whole traffic costs a few draw calls.
 - **Character** (`person.glb`): rounded limbs, torso, head, hair cap and hat as unit-sized parts the game scales and animates.
 - **Named characters** (`hero.glb`, 36 parts): built from the character reference sheets — torso with shoulders, suit jacket with lapels, collar and tie, double-breasted chef jacket with studs and piping, half and bib aprons, toque, four hair styles (short, messy, bowl, curly), beard, mustache, sunglasses, headphones, earring, necklace, dress shoes and sneakers. `js/people.js` describes each person (Vlad, Orly, Alex Kislov, Chef Anthony, Jean Phil) and the renderer assembles them with a painted face: Vlad is the player, Orly follows with the sign, Anthony works every Home Kitchen, Jean Phil shadowboxes in a New York park, Alex DJs in Chicago and stands in for the Kislov episodes. Press F to talk to any of them.
+- **Faces** (`head.glb`, `faces/*.jpg`): the five named characters wear their real faces. A base head is sculpted from a sphere in Blender (eye sockets, brow, nose, cheekbones, mouth, chin, jaw taper), the front and profile shots from each character reference sheet (`assets/ref/`) are projected onto it as two UV layers, blended by the surface normal, and Cycles bakes the result into one 512px skin texture per person. The game loads that head mesh and texture instead of the painted sphere, keeping the modeled hair, glasses, headphones, toque and ears on top. Landmarks (eye line, chin, ear, nose tip) per sheet live in `FACES` in the pipeline script.
 - **Props** (`props.glb`): tree, palm, lamp post, bench, hydrant, traffic light, trash can, merged into the static city.
 - **Textures** (`tex/`): baked with Cycles. Four facades, each a real wall modeled in 3D — brick with recessed windows, sills and lintels; a glass curtain wall with spandrel bands and mullions; Miami stucco with balconies, railings and shutters; a concrete office with ribbon windows — baked high-to-low onto a tile as colour (with ambient occlusion multiplied in), tangent-space normal, roughness and an emissive map of lit windows. The game picks a style per block from the city's mix (New York leans brick, Florida and LA stucco, Chicago brick and concrete; tall centre blocks go glass) and tints each one. Asphalt, concrete, grass, sand and water are procedural materials baked to colour and normal maps.
 - **Rendering extras on desktop**: clear-coat car paint, rain puddles that reflect the sky environment, a bloom pass for neon, headlights and lit windows at night, and faces, necks, hands and shoes on every pedestrian.
@@ -80,6 +81,7 @@ Between tables it's an open city, and you can do what you like in it:
 ```
 index.html        page + HUD
 assets/           photos of Vlad (the chef) and Orly (the host) — title, cooking and afterword screens
+assets/ref/       character reference sheets the faces and outfits are built from
                   (drop in assets/chef-kitchen.jpg to show Vlad on the cooking screen)
                   title-1.mp4 and title-2.mp4 play back-to-back, muted, behind the title screen;
                   browsers that can't decode them (they're HEVC) fall back to the photo hero
