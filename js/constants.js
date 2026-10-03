@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-unused-vars -- everything here is read by the other <script> files
 const TILE = 32;
 const CITY = 50;
 const WORLD = TILE * CITY;

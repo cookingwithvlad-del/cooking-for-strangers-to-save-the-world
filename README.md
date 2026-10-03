@@ -40,6 +40,14 @@ python3 -m http.server 8000
 
 Works on desktop (keyboard) and phones (on-screen controls). Progress auto-saves to the browser.
 
+## Checks
+
+`deno lint` and `deno test` run on every push (`.github/workflows/deno.yml`). Lint skips the vendored libraries in `js/vendor/` (see `deno.json`); the tests in `tests/` check that the story data and the generated city hold together. Run them locally with:
+
+```
+deno lint && deno test -A
+```
+
 ## How it plays
 
 Every table in the book is a mission, in the book's order:
@@ -100,4 +108,5 @@ js/game.js        game state, mission flow, heat/police, save/load
 js/input.js       keyboard + touch
 js/audio.js       tiny WebAudio sound effects
 js/save.js        localStorage
+tests/            deno test: story data and world generation
 ```

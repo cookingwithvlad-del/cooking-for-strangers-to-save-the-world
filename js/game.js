@@ -1,3 +1,4 @@
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Game {
   constructor(canvas, ui, input) {
     this.canvas = canvas; this.ui = ui; this.input = input;
@@ -265,7 +266,7 @@ class Game {
   }
   beginCook(kind, title, rounds) {
     this.cook = { kind, rounds, round: 0, results: [], pos: 0, dir: 1, speed: 0.85, zone: this.newZone(0.24), done: false, resultT: 0 };
-    this.openModal("cook", this.ui.cookHtml(this, title, this.cook));
+    this.openModal("cook", this.ui.cookHtml(title));
     this.ui.updateCook(this.cook);
   }
   newZone(w) { return { c: 0.15 + Math.random() * 0.7, w }; }

@@ -6,11 +6,12 @@ const STATIONS = [
   { name: "Boardwalk Radio",  tag: "Venice, golden hour",      bpm: 96,  scale: [0, 2, 4, 5, 7, 9, 11, 12], root: 261, lead: "triangle", bass: "triangle", hats: 2, kick: [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0], snare: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0] },
 ];
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 const radio = (() => {
   let ctx = null, master = null, timer = null, step = 0, nextT = 0, station = 0, on = false, seed = 7;
   const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
   let bassLine = [], leadLine = [];
-  const ac = () => { try { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = 0.16; master.connect(ctx.destination); } if (ctx.state === "suspended") ctx.resume(); return ctx; } catch (e) { return null; } };
+  const ac = () => { try { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = 0.16; master.connect(ctx.destination); } if (ctx.state === "suspended") ctx.resume(); return ctx; } catch { return null; } };
   const compose = () => {
     const s = STATIONS[station]; seed = 11 + station * 97;
     bassLine = []; leadLine = [];
