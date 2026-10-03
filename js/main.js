@@ -5,7 +5,7 @@
   const game = new Game(canvas, ui, input);
   window.game = game;
   let prefer2d = /[?&]2d/.test(location.search);
-  try { prefer2d = prefer2d || localStorage.getItem("cfs-2d") === "1"; } catch (e) {}
+  try { prefer2d = prefer2d || localStorage.getItem("cfs-2d") === "1"; } catch { /* storage unavailable */ }
   if (window.THREE && !prefer2d) {
     try { game.renderer = new Renderer3D(canvas, game); }
     catch (e) { console.warn("3D unavailable, using the 2D renderer:", e); }

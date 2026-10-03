@@ -5,7 +5,7 @@
 
 class GeoBuilder {
   constructor() { this.pos = []; this.nrm = []; this.col = []; this.uv = []; this.tmp = new THREE.Color(); }
-  add(g, color, uvScale) {
+  add(g, color) {
     const ng = g.index ? g.toNonIndexed() : g;
     const p = ng.attributes.position.array, n = ng.attributes.normal.array, u = ng.attributes.uv ? ng.attributes.uv.array : null;
     this.tmp.set(color);
@@ -160,7 +160,7 @@ class Renderer3D {
     t.anisotropy = 4; t.encoding = THREE.sRGBEncoding;
     return t;
   }
-  noise(ctx, w, h, base, amp, n) { for (let i = 0; i < n; i++) { const v = (Math.random() - 0.5) * amp; ctx.fillStyle = `rgba(${v > 0 ? 255 : 0},${v > 0 ? 255 : 0},${v > 0 ? 255 : 0},${Math.abs(v)})`; ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); } }
+  noise(ctx, w, h, _base, amp, n) { for (let i = 0; i < n; i++) { const v = (Math.random() - 0.5) * amp; ctx.fillStyle = `rgba(${v > 0 ? 255 : 0},${v > 0 ? 255 : 0},${v > 0 ? 255 : 0},${Math.abs(v)})`; ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 3, 1 + Math.random() * 3); } }
   makeTextures() {
     this.tex = {};
     this.tex.asphalt = this.canvasTex(256, 256, (ctx, w, h) => { ctx.fillStyle = "#3a3d46"; ctx.fillRect(0, 0, w, h); this.noise(ctx, w, h, 0, 0.35, 4000); ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 1; for (let i = 0; i < 6; i++) { ctx.beginPath(); let x = Math.random() * w, y = Math.random() * h; ctx.moveTo(x, y); for (let k = 0; k < 5; k++) { x += (Math.random() - 0.5) * 60; y += (Math.random() - 0.5) * 60; ctx.lineTo(x, y); } ctx.stroke(); } });
@@ -289,7 +289,7 @@ class Renderer3D {
             lampGlow.sphere(cx + ox + 6, 25.2, cz + oz, 3, "#ffd58a", 8);
           }
           // traffic light heads on two diagonal corners
-          for (const [ox, oz, rot] of [[-13, 13, 0], [13, -13, Math.PI]]) {
+          for (const [ox, oz] of [[-13, 13], [13, -13]]) {
             if (!this.prop(props, "trafficlight", cx + ox, cz + oz, 1, Math.PI, { pole: "#3f3f46", head: "#27272a", hood: "#111111" })) { props.cyl(cx + ox, 12, cz + oz, 0.6, 0.7, 24, "#3f3f46", 5); props.box(cx + ox, 22, cz + oz, 3, 9, 3, "#27272a"); }
           }
         }
@@ -755,8 +755,8 @@ class Renderer3D {
       this.envKey = key;
       const day = Math.max(0, Math.min(1, elev * 2.2)), dusk = Math.max(0, 1 - Math.abs(elev) * 5), night = Math.max(0, Math.min(1, -elev * 3));
       const c = (a, b, k) => new THREE.Color(a).lerp(new THREE.Color(b), k);
-      let top = c("#1a3f7a", rain ? "#5b6b85" : "#2f7fd6", day).lerp(new THREE.Color("#3a2a5a"), dusk * 0.6).lerp(new THREE.Color("#04071a"), night);
-      let hor = c("#6d6f93", rain ? "#9aa5b5" : "#cfe6ff", day).lerp(new THREE.Color("#ff9a5c"), dusk * 0.85).lerp(new THREE.Color("#0b1230"), night);
+      const top = c("#1a3f7a", rain ? "#5b6b85" : "#2f7fd6", day).lerp(new THREE.Color("#3a2a5a"), dusk * 0.6).lerp(new THREE.Color("#04071a"), night);
+      const hor = c("#6d6f93", rain ? "#9aa5b5" : "#cfe6ff", day).lerp(new THREE.Color("#ff9a5c"), dusk * 0.85).lerp(new THREE.Color("#0b1230"), night);
       const haze = (humid ? 0.75 : 0.5) + (rain ? 0.25 : 0);
       this.skyU.top.value.copy(top); this.skyU.horizon.value.copy(hor); this.skyU.haze.value = haze;
       this.skyU.sunCol.value.copy(c("#ff8a3d", "#fff4d6", Math.min(1, elev * 3)));

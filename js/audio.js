@@ -1,3 +1,4 @@
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 const sfx = (() => {
   let ctx = null;
   const ac = () => {
@@ -5,7 +6,7 @@ const sfx = (() => {
       if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
       if (ctx.state === "suspended") ctx.resume();
       return ctx;
-    } catch (e) { return null; }
+    } catch { return null; }
   };
   const tone = (freq, dur, type = "square", vol = 0.08, slide = 0) => {
     const c = ac(); if (!c) return;

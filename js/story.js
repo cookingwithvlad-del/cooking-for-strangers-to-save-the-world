@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-unused-vars -- everything here is read by the other <script> files
 // Mission data derived from "Cooking for Strangers to Save the World" (Vlad Briantsev & Orly Israel).
 
 const CITIES = {
@@ -296,3 +297,8 @@ function cookCue(dish) {
   if (/chicken|salmon|tuna|halibut|mahi|shrimp|scallop|bacon|pork/.test(d)) return "Pan hot and dry first. Don't crowd it.";
   return "Mise en place first. Then fire.";
 }
+
+// Stars for a served table, on the same lines as the cooking result: perfect, good, anything else.
+function starsFor(q) { return q >= 0.95 ? 3 : q >= 0.6 ? 2 : 1; }
+function isCookedTable(ep) { return ep.type !== "visit" && !!(ep.dishes && ep.dishes.length); }
+const MAX_STARS = EPISODES.filter(isCookedTable).length * 3;

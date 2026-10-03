@@ -7,6 +7,7 @@ const KEYMAP = {
   Digit1: "opt1", Digit2: "opt2", Digit3: "opt3",
 };
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Input {
   constructor() {
     this.state = {}; this.pressedNow = {};

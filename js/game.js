@@ -1,3 +1,4 @@
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Game {
   constructor(canvas, ui, input) {
     this.canvas = canvas; this.ui = ui; this.input = input;
@@ -19,7 +20,7 @@ class Game {
     this.cash = START_CASH; this.trust = 0; this.fed = 0; this.heat = 0; this.time = DAY_LENGTH * 0.12;
     this.freeze = 0; this.shake = 0; this.signCooldown = 0; this.lockToastT = 0; this.hornT = 0;
     this.inventory = {}; this.plates = [];
-    this.episodeIdx = 0; this.done = new Set(); this.step = null; this.spot = null; this.spotLook = { figures: [] };
+    this.episodeIdx = 0; this.done = new Set(); this.best = {}; this.step = null; this.spot = null; this.spotLook = { figures: [] };
     this.unlocked = new Set(["ny"]); w.unlocked = this.unlocked;
     this.stats = { earned: 0, splashed: 0, busted: 0, perfect: 0, plates: 0, fares: 0, fed_street: 0, carjacks: 0, swims: 0 };
     this.player = new Player(w.homes.ny.spawn.x, w.homes.ny.spawn.y);
@@ -47,6 +48,7 @@ class Game {
     Object.assign(this, { cash: d.cash, trust: d.trust, fed: d.fed, time: d.time || 0, inventory: d.inventory || {}, plates: d.plates || [] });
     this.stats = Object.assign(this.stats, d.stats || {});
     this.done = new Set(d.done || []);
+    this.best = d.best || {};
     this.owned = d.owned || [];
     this.radioOn = d.radioOn !== false; radio.set(d.radioStation || 0);
     this.unlocked = new Set(d.unlocked || ["ny"]); this.world.unlocked = this.unlocked;
@@ -64,7 +66,7 @@ class Game {
   saveGame(announce) {
     const ok = writeSave({
       cash: this.cash, trust: this.trust, fed: this.fed, time: this.time, inventory: this.inventory, plates: this.plates,
-      stats: this.stats, done: [...this.done], unlocked: [...this.unlocked], episodeIdx: this.episodeIdx,
+      stats: this.stats, done: [...this.done], best: this.best, unlocked: [...this.unlocked], episodeIdx: this.episodeIdx,
       accepted: this.step !== "approach", px: this.player.vehicle ? this.world.homes[this.city].spawn.x : this.player.x, py: this.player.vehicle ? this.world.homes[this.city].spawn.y : this.player.y,
       owned: this.owned, radioOn: this.radioOn, radioStation: radio.index(),
     });
@@ -263,9 +265,24 @@ class Game {
     this.cookPlate = plate;
     this.beginCook("plate", plate.name, [{ dish: plate.name, cue: cookCue(plate.name) }]);
   }
+  replayEpisode(idx) {
+    const ep = EPISODES[idx];
+    if (!ep || !this.done.has(ep.id) || !isCookedTable(ep) || this.cook) return;
+    this.replayIdx = idx;
+    const dishes = ep.dishes.slice(0, 4);
+    this.beginCook("replay", `Again, for ${ep.name}`, dishes.map(d => ({ dish: d, cue: cookCue(d) })));
+  }
+  // Keeps the best result for a table; returns the stars and how many were gained.
+  recordBest(ep, q) {
+    const before = this.best[ep.id] != null ? starsFor(this.best[ep.id]) : 0;
+    if (!(this.best[ep.id] >= q)) this.best[ep.id] = q;
+    const stars = starsFor(q);
+    return { stars, gained: Math.max(0, stars - before) };
+  }
+  totalStars() { return Object.values(this.best).reduce((a, q) => a + starsFor(q), 0); }
   beginCook(kind, title, rounds) {
     this.cook = { kind, rounds, round: 0, results: [], pos: 0, dir: 1, speed: 0.85, zone: this.newZone(0.24), done: false, resultT: 0 };
-    this.openModal("cook", this.ui.cookHtml(this, title, this.cook));
+    this.openModal("cook", this.ui.cookHtml(title));
     this.ui.updateCook(this.cook);
   }
   newZone(w) { return { c: 0.15 + Math.random() * 0.7, w }; }
@@ -288,7 +305,8 @@ class Game {
         const q = c.results.reduce((a, b) => a + b, 0) / c.results.length;
         c.quality = q;
         const label = q >= 0.95 ? "Perfect service." : q >= 0.6 ? "Good. They're happy." : q >= 0.3 ? "Rough, but it's dinner." : "Burnt. They ate it anyway.";
-        this.ui.cookResult(label, c.kind === "episode" ? "Plates go to the table." : "Into the bag.");
+        const sub = c.kind === "plate" ? "Into the bag." : "★".repeat(starsFor(q)) + "☆".repeat(3 - starsFor(q)) + " · Plates go to the table.";
+        this.ui.cookResult(label, sub);
       } else { c.zone = this.newZone(Math.max(0.14, c.zone.w - 0.03)); c.speed += 0.28; }
     }
     this.ui.updateCook(c);
@@ -301,7 +319,21 @@ class Game {
       this.plates.push({ id: this.cookPlate.id, q: c.quality });
       this.stats.plates++;
       this.ui.toast(`${this.cookPlate.icon} ${this.cookPlate.name} is in the bag. Hand it to anyone who's hungry (🍴 or 🟠).`);
-    } else this.completeEpisode(c.quality);
+    } else if (c.kind === "replay") this.completeReplay(c.quality);
+    else this.completeEpisode(c.quality);
+  }
+  completeReplay(q) {
+    const ep = EPISODES[this.replayIdx]; this.replayIdx = null;
+    const { stars, gained } = this.recordBest(ep, q);
+    if (gained > 0) {
+      const trustGain = gained * 5;
+      this.trust += trustGain;
+      if (stars === 3) this.stats.perfect++;
+      sfx.cash();
+      this.ui.toast(`Table ${ep.n}, ${ep.name}: ${"★".repeat(stars)} — a new best. +${trustGain} trust.`, 4500);
+    } else this.ui.toast(`Table ${ep.n}, ${ep.name}: ${"★".repeat(stars)}${"☆".repeat(3 - stars)}. Your best stands.`, 4000);
+    this.saveGame(false);
+    this.openJournal();
   }
   completeEpisode(q) {
     const ep = this.ep;
@@ -315,8 +347,9 @@ class Game {
     this.fed += ep.covers;
     if (q >= 0.95) this.stats.perfect++;
     this.done.add(ep.id);
+    const starText = isCookedTable(ep) ? " " + "★".repeat(this.recordBest(ep, q).stars) : "";
     sfx.cash();
-    this.ui.toast(`Table ${ep.n} served: ${ep.name}, ${ep.covers} ${ep.covers === 1 ? "person" : "people"} fed. +$${earned} · +${trustGain} trust.`, 4500);
+    this.ui.toast(`Table ${ep.n} served${starText}: ${ep.name}, ${ep.covers} ${ep.covers === 1 ? "person" : "people"} fed. +$${earned} · +${trustGain} trust.`, 4500);
     for (const v of this.vehicles) if (v.kind === "rental" || v.owned) v.speedBonus = (this.level - 1) * 18;
     const next = this.episodeIdx + 1;
     if (next >= EPISODES.length) {
