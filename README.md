@@ -48,6 +48,7 @@ Every table in the book is a mission, in the book's order:
 2. **Shop the menu.** The episode's shopping list is drawn from its recipes. Each city has a Produce Market, a Butcher & Fish and a Grocery. Shops that stock something on your list show a green `$`.
 3. **Cook in their kitchen.** A timing minigame, one round per dish, each with a cue from the book's technique (velveting, hollandaise, "don't lift the lid"). Quality decides the tip.
 4. **Table served.** Covers count toward the 10,000. Finish a city's tables and the next city opens — drive there, find the new Home Kitchen and the fresh rental.
+5. **Stars.** Each cooked table earns one to three stars from how the cooking went, and the Book (B) keeps your best. Press **↻ Again** on any table you've served to cook its menu again for a better score. No shopping and no pay on a replay, but a new best earns trust.
 
 Between tables it's an open city, and you can do what you like in it:
 

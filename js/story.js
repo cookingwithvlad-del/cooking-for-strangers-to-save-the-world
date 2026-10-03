@@ -296,3 +296,8 @@ function cookCue(dish) {
   if (/chicken|salmon|tuna|halibut|mahi|shrimp|scallop|bacon|pork/.test(d)) return "Pan hot and dry first. Don't crowd it.";
   return "Mise en place first. Then fire.";
 }
+
+// Stars for a served table, on the same lines as the cooking result: perfect, good, anything else.
+function starsFor(q) { return q >= 0.95 ? 3 : q >= 0.6 ? 2 : 1; }
+function isCookedTable(ep) { return ep.type !== "visit" && !!(ep.dishes && ep.dishes.length); }
+const MAX_STARS = EPISODES.filter(isCookedTable).length * 3;
