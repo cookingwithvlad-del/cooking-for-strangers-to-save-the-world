@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-unused-vars -- everything here is read by the other <script> files
 // Mission data derived from "Cooking for Strangers to Save the World" (Vlad Briantsev & Orly Israel).
 
 const CITIES = {

@@ -16,6 +16,7 @@ const CITY_BLOCKS = {
 const PARK_BLOCKS = [[0, 1], [4, 4], [4, 0], [5, 0], [9, 3], [5, 4], [0, 9], [4, 6], [0, 5], [6, 5], [9, 9], [9, 6], [2, 4], [7, 5], [5, 7]];
 const RIVER = [23, 27];
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 function buildWorld(seed = 20240918) {
   const rng = makeRng(seed);
   const tiles = new Uint8Array(CITY * CITY);
