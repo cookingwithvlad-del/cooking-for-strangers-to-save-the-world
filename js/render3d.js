@@ -125,6 +125,7 @@ class Renderer3D {
         pm.dispose();
       } catch (e) { console.warn("env maps:", e); }
     }
+    this.heroMeshes = {};
     this.rebuildCity();
   }
   rebuildCity() {
@@ -491,6 +492,87 @@ class Renderer3D {
     this.I.shadow.mesh.renderOrder = 1;
   }
   // Eyes, brows and a mouth on a white base; the instance colour tints it to each person's skin. Front of the head is u = 0.5.
+  // A named character's face: skin tone comes from the material colour; brows, eyes, freckles, stubble and lips are painted.
+  heroFace(H) {
+    return this.canvasTex(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
+      if (H.freckles) { ctx.fillStyle = "rgba(150,90,60,0.35)"; for (let i = 0; i < 70; i++) { const x = w * 0.5 + (Math.random() - 0.5) * 70, y = h * 0.5 + (Math.random() - 0.5) * 36; ctx.fillRect(x, y, 1.6, 1.6); } }
+      if (H.stubble || H.beard) { ctx.fillStyle = H.beard ? "rgba(60,35,20,0.42)" : "rgba(60,45,35,0.22)"; ctx.beginPath(); ctx.ellipse(w * 0.5, h * 0.66, 52, 32, 0, 0, 7); ctx.fill(); }
+      const eye = (x) => {
+        ctx.fillStyle = "#f6f3ee"; ctx.beginPath(); ctx.ellipse(x, h * 0.46, 11, 6.5, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = H.eyes || "#3a2a1c"; ctx.beginPath(); ctx.arc(x, h * 0.465, 4.4, 0, 7); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.beginPath(); ctx.arc(x, h * 0.465, 2, 0, 7); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.beginPath(); ctx.arc(x - 1.5, h * 0.45, 1, 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(60,40,25,0.55)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, h * 0.46, 11, 6.5, 0, Math.PI, 0); ctx.stroke();
+        ctx.strokeStyle = H.hair || "#3a2a1c"; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.arc(x, h * 0.40, 12, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+      };
+      eye(w * 0.5 - 19); eye(w * 0.5 + 19);
+      ctx.fillStyle = "rgba(120,70,50,0.25)"; ctx.beginPath(); ctx.ellipse(w * 0.5, h * 0.54, 4, 5, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = "rgba(170,90,80,0.55)"; ctx.beginPath(); ctx.ellipse(w * 0.5, h * 0.615, 9, 2.6, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(90,45,35,0.7)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(w * 0.5 - 9, h * 0.61); ctx.quadraticCurveTo(w * 0.5, h * 0.625, w * 0.5 + 9, h * 0.61); ctx.stroke();
+      if (H.mustache && !window.Assets3D.hero) { ctx.fillStyle = H.mustache; ctx.fillRect(w * 0.5 - 12, h * 0.575, 24, 4); }
+    }, false);
+  }
+  // Assemble a named character from the Blender hero parts: one merged body, a textured head, merged headgear, and four limb pivots.
+  buildHero(id) {
+    const H = HEROES[id], P = window.Assets3D && Assets3D.hero;
+    if (!P) return null;
+    const lam = () => new THREE.MeshLambertMaterial({ vertexColors: true });
+    const add = (b, name, color, x = 0, y = 0, z = 0) => { for (const g of P[name] || []) b.geo(g, color, x, y, z); };
+    const grp = new THREE.Group();
+    const body = new GeoBuilder();
+    const top = H.outfit === "chef" ? H.jacket : H.shirt;
+    add(body, "torso", top, 0, 11, 0);
+    if (H.outfit === "suit") { add(body, "jacket", H.jacket, 0, 11, 0); add(body, "lapel", H.jacket, 0, 11, 0); add(body, "collar", H.shirt, 0, 11, 0); add(body, "tie", H.tie, 0, 11, 0); add(body, "knot", H.tie, 0, 11, 0); }
+    if (H.outfit === "chef") { add(body, "chefjacket", H.jacket, 0, 11, 0); add(body, "stud", H.piping, 0, 11, 0); add(body, "piping", H.piping, 0, 11, 0); }
+    if (H.apron === "half") { add(body, "apron_half", H.apronColor, 0, 11, 0); add(body, "apron_band", H.apronColor, 0, 11, 0); }
+    if (H.apron === "bib") { add(body, "apron_bib", H.apronColor, 0, 11, 0); add(body, "strap", H.apronColor, 0, 11, 0); add(body, "apron_band", H.apronColor, 0, 11, 0); }
+    add(body, "neck", H.skin, 0, 18.6, 0);
+    if (H.necklace) add(body, "necklace", "#d4d4d8", 0, 18.6, 0);
+    const bodyMesh = body.build(lam()); grp.add(bodyMesh);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(3.2, 20, 16), new THREE.MeshLambertMaterial({ color: H.skin, map: this.heroFace(H) }));
+    head.scale.set(0.95, 1.08, 0.98); head.position.y = 18.6; grp.add(head);
+    const gear = new GeoBuilder();
+    add(gear, "nose", H.skin, 0, 18.6, 0); add(gear, "ear", H.skin, 0, 18.6, 0);
+    if (!H.toque || H.hairStyle !== "short") add(gear, "hair_" + H.hairStyle, H.hair, 0, 18.6, 0);
+    if (H.beard) add(gear, "beard", H.beard, 0, 18.6, 0);
+    if (H.mustache) add(gear, "mustache", H.mustache, 0, 18.6, 0);
+    if (H.toque) add(gear, "toque", "#141518", 0, 18.6, 0);
+    if (H.headphones) add(gear, "headphones", "#111111", 0, 18.6, 0);
+    if (H.earring) add(gear, "earring", "#c0c0c0", 0, 18.6, 0);
+    if (H.glasses) add(gear, "glasses_frame", H.glassesTint ? "#b8862a" : "#222222", 0, 18.6, 0);
+    const gearMesh = gear.build(lam()); grp.add(gearMesh);
+    if (H.glasses) {
+      const lens = new GeoBuilder(); add(lens, "glasses_lens", H.glasses, 0, 18.6, 0);
+      grp.add(lens.build(new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 160, specular: new THREE.Color("#ffffff"), transparent: !!H.glassesTint, opacity: H.glassesTint ? 0.72 : 1 })));
+    }
+    const limbs = {};
+    for (const [key, x, y, z, isLeg] of [["legL", 0, 7, -1.7, true], ["legR", 0, 7, 1.7, true], ["armL", 0, 14.5, -4.8, false], ["armR", 0, 14.5, 4.8, false]]) {
+      const b = new GeoBuilder();
+      if (isLeg) { add(b, "leg", H.pants); add(b, H.shoe === "sneaker" ? "shoe_sneaker" : "shoe_dress", H.shoeColor || "#111111"); if (H.shoe === "sneaker") add(b, "shoe_sole", "#d9d9d9"); }
+      else { add(b, "arm", H.outfit === "chef" ? H.jacket : H.outfit === "suit" ? H.jacket : H.skin); add(b, "sleeve", H.outfit === "chef" ? H.jacket : H.outfit === "suit" ? H.jacket : H.shirt); add(b, "hand", H.skin); }
+      const m = b.build(lam()); m.position.set(x, y, z); grp.add(m); limbs[key] = m;
+    }
+    grp.traverse(o => { if (o.isMesh) { o.castShadow = this.shadows; } });
+    grp.userData = { limbs, head, H };
+    grp.visible = false; this.scene.add(grp);
+    return grp;
+  }
+  drawHero(id, x, y, z, yaw, t, moving, pose, say) {
+    if (!this.heroMeshes) this.heroMeshes = {};
+    let grp = this.heroMeshes[id];
+    if (grp === undefined) { grp = this.buildHero(id); if (!grp) return false; this.heroMeshes[id] = grp; }
+    grp.visible = true; grp.position.set(x, y, z); grp.rotation.y = -yaw;
+    const L = grp.userData.limbs, s = moving ? Math.sin(t * 10) * 0.7 : 0;
+    L.legL.rotation.z = s; L.legR.rotation.z = -s; L.armL.rotation.z = -s * 0.8; L.armR.rotation.z = s * 0.8;
+    grp.userData.head.rotation.set(0, 0, 0);
+    if (pose === "box") { const k = Math.sin(t * 7); L.armL.rotation.z = -1.35 + Math.max(0, k) * 0.6; L.armR.rotation.z = -1.35 + Math.max(0, -k) * 0.6; L.armL.rotation.x = 0.35; L.armR.rotation.x = -0.35; L.legL.rotation.z = 0.25; L.legR.rotation.z = -0.25; grp.position.y = y + Math.abs(Math.sin(t * 7)) * 0.8; }
+    else if (pose === "dj") { L.armL.rotation.z = -1.0 + Math.sin(t * 4) * 0.12; L.armR.rotation.z = -1.1 + Math.sin(t * 4 + 1.5) * 0.12; L.armL.rotation.x = 0.2; L.armR.rotation.x = -0.2; grp.userData.head.rotation.x = Math.sin(t * 8) * 0.08; }
+    else { L.armL.rotation.x = 0; L.armR.rotation.x = 0; }
+    this.I.shadow.add(this.part(this.frame(x, 0, z, yaw), 0, 0.35, 0, 6.5, 1, 6.5), "#000000");
+    if (say) this.label(x, 30, z, say, "lbl");
+    return true;
+  }
   faceTexture() {
     return this.canvasTex(256, 256, (ctx, w, h) => {
       ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
@@ -630,6 +712,7 @@ class Renderer3D {
   draw() {
     const g = this.game, p = g.player, night = g.nightAmount() > 0.25;
     this.labelUsed = 0;
+    if (this.heroMeshes) for (const m of Object.values(this.heroMeshes)) if (m) m.visible = false;
     const dt = 1 / 60;
     this.updateCamera(dt);
     this.updateEnvironment(dt);
@@ -667,7 +750,7 @@ class Renderer3D {
       look.figures.forEach((f, i) => {
         const fx = s.x + f.dx, fz = s.y + f.dy;
         const a = nearP ? Math.atan2(p.y - fz, p.x - fx) : f.angle + Math.sin(g.time * 0.7 + i) * 0.3;
-        this.drawPerson(fx, 0, fz, a, f, g.time + i, { hat: f.hat });
+        if (!(f.hero && this.drawHero(f.hero, fx, 0, fz, a, g.time, false, "idle"))) this.drawPerson(fx, 0, fz, a, f, g.time + i, { hat: f.hat });
         if (f.dog) this.drawDog(fx + 10, fz + 8, a, f.dogColor, g.time);
       });
       const icon = g.step === "cook" ? "🍳 " : g.step === "shop" ? "⏳ " : "❗ ";
@@ -675,12 +758,13 @@ class Renderer3D {
       if (nearP) this.label(s.x, 44, s.y, g.ep.who, "lbl sub");
     }
     this.orlySign.visible = !p.vehicle;
+    for (const hr of g.heroes) if (near(hr.x, hr.y)) { if (!this.drawHero(hr.id, hr.x, 0, hr.y, hr.facing || hr.angle, hr.t, false, hr.pose, hr.say)) { const H = HEROES[hr.id]; this.drawPerson(hr.x, 0, hr.y, hr.facing || hr.angle, { skin: H.skin, shirt: H.outfit === "shirt" ? H.shirt : H.jacket, pants: H.pants, hair: H.hair, hairStyle: 0 }, hr.t, {}); if (hr.say) this.label(hr.x, 26, hr.y, hr.say, "lbl"); } }
     if (!p.vehicle) {
       const moving = g.input.down("up") || g.input.down("down") || g.input.down("left") || g.input.down("right");
-      this.drawPerson(p.x, 0, p.y, p.angle, { skin: "#e0ac69", shirt: "#f8fafc", pants: "#1f2937" }, p.walkT, { chef: true, moving: moving && p.stun <= 0, stunned: p.stun > 0 });
+      if (!(p.stun <= 0 && this.drawHero("vlad", p.x, 0, p.y, p.angle, p.walkT, moving, "idle"))) this.drawPerson(p.x, 0, p.y, p.angle, { skin: "#e0ac69", shirt: "#f8fafc", pants: "#1f2937" }, p.walkT, { chef: true, moving: moving && p.stun <= 0, stunned: p.stun > 0 });
       const o = g.orly;
       const om = Math.hypot(o.x - (p.x - Math.cos(p.angle) * 16), o.y - (p.y - Math.sin(p.angle) * 16)) > 7;
-      this.drawPerson(o.x, 0, o.y, o.angle, { skin: "#f1c9a5", shirt: "#1e3a8a", pants: "#374151", hair: "#d6b370", hairStyle: 0 }, o.walkT || 0, { moving: om, umbrella: g.weather.rain });
+      if (!this.drawHero("orly", o.x, 0, o.y, o.angle, o.walkT || 0, om, "idle")) this.drawPerson(o.x, 0, o.y, o.angle, { skin: "#f1c9a5", shirt: "#1e3a8a", pants: "#374151", hair: "#d6b370", hairStyle: 0 }, o.walkT || 0, { moving: om, umbrella: g.weather.rain });
       this.I.pole.add(this.part(this.frame(o.x, 0, o.y, o.angle), 2, 20, 5, 0.4, 14, 0.4), "#b45309");
       this.orlySign.position.set(o.x + Math.cos(o.angle) * 2 - Math.sin(o.angle) * 5, 29, o.y + Math.sin(o.angle) * 2 + Math.cos(o.angle) * 5);
     }

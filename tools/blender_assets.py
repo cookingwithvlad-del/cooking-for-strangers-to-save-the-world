@@ -200,6 +200,102 @@ def build_person():
     hat = prim("cylinder", "hat", radius=1, depth=1, vertices=16, location=(0, 0, 0)); bevel(hat, 0.2, 2); apply_all(hat); smooth(hat, 45); parts.append(hat)
     export_glb(parts, os.path.join(OUT, "person.glb"))
 
+
+# ------------------------------------------------------------------ hero character parts (named characters)
+def build_hero():
+    """Detailed humanoid parts on the same skeleton the crowd uses (legs 0..7, torso 7..15, head centre 18.6)."""
+    parts = []
+    def keep(o): parts.append(o); return o
+    def cube(name, loc, scale, bev=0.3, seg=3):
+        o = prim("cube", name, size=1, location=loc); o.scale = scale
+        if bev: bevel(o, bev, seg)
+        apply_all(o); smooth(o, 40); return keep(o)
+    # torso with shoulders (origin at torso centre, y up in game -> z up here)
+    t = prim("cube", "torso", size=1, location=(0, 0, 0)); t.scale = (4.6, 7.2, 8)
+    apply_all(t)
+    import bmesh
+    bm = bmesh.new(); bm.from_mesh(t.data)
+    for v in bm.verts:
+        if v.co.z > 0: v.co.y *= 1.25; v.co.x *= 1.05   # shoulders
+        else: v.co.y *= 0.92
+    bm.to_mesh(t.data); bm.free()
+    bevel(t, 0.9, 3); apply_all(t); smooth(t, 40); keep(t)
+    # suit jacket: shell around torso with lapels and open front
+    j = prim("cube", "jacket", size=1, location=(0, 0, -0.3)); j.scale = (5.4, 9.2, 7.6); bevel(j, 0.9, 3); apply_all(j)
+    cut = prim("cube", "cut", size=1, location=(3.0, 0, 1.5)); cut.scale = (2, 2.4, 6); apply_all(cut)
+    bo = j.modifiers.new("front", "BOOLEAN"); bo.operation = "DIFFERENCE"; bo.object = cut; bo.solver = "EXACT"; apply_all(j); bpy.data.objects.remove(cut, do_unlink=True)
+    smooth(j, 40); keep(j)
+    for sgn in (-1, 1):
+        lap = prim("cube", "lapel", size=1, location=(2.75, sgn * 1.6, 2.2)); lap.scale = (0.5, 1.6, 3.6); lap.rotation_euler = (0, 0, sgn * 0.5); apply_all(lap); keep(lap)
+    cube("collar", (0, 0, 4.1), (4.2, 7.0, 1.0), 0.3)
+    cube("tie", (2.8, 0, 0.2), (0.4, 1.3, 6.5), 0.15)
+    cube("knot", (2.9, 0, 3.3), (0.6, 1.4, 1.2), 0.2)
+    # chef jacket: double-breasted front panel with button studs
+    cj = prim("cube", "chefjacket", size=1, location=(0, 0, -0.2)); cj.scale = (5.2, 9.0, 8.2); bevel(cj, 0.8, 3); apply_all(cj); smooth(cj, 40); keep(cj)
+    for i in range(3):
+        for sgn in (-1, 1): keep(prim("uv_sphere", "stud", radius=0.35, segments=8, ring_count=6, location=(2.75, sgn * 1.1, 2.4 - i * 2)))
+    cube("piping", (2.7, 0, 3.9), (0.3, 7.2, 0.35), 0.1)
+    # aprons
+    cube("apron_half", (2.55, 0, -4.5), (0.5, 7.4, 7.0), 0.2)
+    cube("apron_band", (0, 0, -1.2), (5.4, 9.4, 0.7), 0.2)
+    cube("apron_bib", (2.5, 0, -1.5), (0.5, 6.4, 13.0), 0.2)
+    for sgn in (-1, 1): cube("strap", (1.0, sgn * 2.6, 4.6), (3.4, 0.5, 0.5), 0.1)
+    # head pieces (origin at head centre)
+    h = prim("uv_sphere", "head", radius=3.2, segments=24, ring_count=18, location=(0, 0, 0)); h.scale = (0.95, 0.98, 1.08); apply_all(h); smooth(h, 60); keep(h)
+    keep(prim("uv_sphere", "nose", radius=0.55, segments=8, ring_count=6, location=(3.05, 0, -0.3)))
+    for sgn in (-1, 1):
+        e = prim("uv_sphere", "ear", radius=0.75, segments=8, ring_count=6, location=(0.1, sgn * 3.05, -0.1)); e.scale = (0.5, 0.6, 1); apply_all(e); keep(e)
+    n = prim("cylinder", "neck", radius=1.4, depth=2.4, vertices=12, location=(0, 0, -3.8)); keep(n)
+    # hair styles
+    hc = prim("uv_sphere", "hair_short", radius=3.45, segments=20, ring_count=14, location=(0, 0, 0.15))
+    bm = bmesh.new(); bm.from_mesh(hc.data); bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < -0.2 or (v.co.x > 1.6 and v.co.z < 1.4)], context="VERTS"); bm.to_mesh(hc.data); bm.free(); smooth(hc, 60); keep(hc)
+    hm = prim("uv_sphere", "hair_messy", radius=3.5, segments=20, ring_count=14, location=(0, 0, 0.3))
+    bm = bmesh.new(); bm.from_mesh(hm.data); bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < -1.0 or (v.co.x > 1.4 and v.co.z < 1.6)], context="VERTS"); bm.to_mesh(hm.data); bm.free(); smooth(hm, 60); keep(hm)
+    random.seed(3)
+    for i in range(14):
+        a = random.random() * 6.283; r = 2.2 + random.random() * 1.2; zz = 1.2 + random.random() * 2.2
+        tuft = prim("uv_sphere", "hair_messy", radius=0.9 + random.random() * 0.6, segments=8, ring_count=6, location=(math.cos(a) * r * 0.8, math.sin(a) * r, zz)); keep(tuft)
+    hb = prim("uv_sphere", "hair_bowl", radius=3.7, segments=24, ring_count=16, location=(0, 0, 0.4))
+    bm = bmesh.new(); bm.from_mesh(hb.data); bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < -1.3 or (v.co.x > 2.0 and v.co.z < 0.6)], context="VERTS"); bm.to_mesh(hb.data); bm.free(); smooth(hb, 60); keep(hb)
+    cube("hair_bowl", (2.4, 0, 1.1), (1.6, 6.0, 1.8), 0.4)   # straight fringe over the brow
+    random.seed(5)
+    for i in range(26):
+        a = random.random() * 6.283; r = 2.4 + random.random() * 1.0; zz = 0.6 + random.random() * 3.0
+        c = prim("ico_sphere", "hair_curly", radius=0.95 + random.random() * 0.55, subdivisions=1, location=(math.cos(a) * r * 0.85, math.sin(a) * r, zz)); smooth(c, 60); keep(c)
+    keep(prim("uv_sphere", "hair_curly", radius=3.3, segments=16, ring_count=12, location=(0, 0, 1.2)))
+    # beard: lower front shell
+    bd = prim("uv_sphere", "beard", radius=3.45, segments=20, ring_count=14, location=(0, 0, -0.2))
+    bm = bmesh.new(); bm.from_mesh(bd.data); bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z > -0.9 or v.co.x < 0.6], context="VERTS"); bm.to_mesh(bd.data); bm.free(); smooth(bd, 60); keep(bd)
+    ms = prim("cube", "mustache", size=1, location=(3.1, 0, -1.25)); ms.scale = (0.5, 2.6, 0.5); bevel(ms, 0.2, 2); apply_all(ms); smooth(ms, 40); keep(ms)
+    for sgn in (-1, 1):
+        tip = prim("cube", "mustache", size=1, location=(3.0, sgn * 1.6, -1.0)); tip.scale = (0.4, 0.9, 0.4); tip.rotation_euler = (sgn * 0.7, 0, 0); apply_all(tip); keep(tip)
+    # toque: band plus pleated crown
+    keep(prim("cylinder", "toque", radius=3.5, depth=1.6, vertices=24, location=(0, 0, 3.0)))
+    crown = prim("cylinder", "toque", radius=3.9, depth=5.0, vertices=24, location=(0, 0, 6.2)); bevel(crown, 0.9, 3); apply_all(crown); smooth(crown, 40); keep(crown)
+    for i in range(12):
+        a = i * 0.5236; pl = prim("cube", "toque", size=1, location=(math.cos(a) * 3.9, math.sin(a) * 3.9, 6.2)); pl.scale = (0.5, 0.5, 4.6); pl.rotation_euler = (0, 0, a); apply_all(pl); keep(pl)
+    # sunglasses: two lenses, bridge, arms
+    for sgn in (-1, 1):
+        lens = prim("cube", "glasses_lens", size=1, location=(3.1, sgn * 1.35, 0.55)); lens.scale = (0.3, 2.2, 1.4); bevel(lens, 0.4, 3); apply_all(lens); smooth(lens, 40); keep(lens)
+        arm = prim("cube", "glasses_frame", size=1, location=(0.9, sgn * 3.1, 0.65)); arm.scale = (4.4, 0.25, 0.25); apply_all(arm); keep(arm)
+    cube("glasses_frame", (3.15, 0, 0.7), (0.25, 0.9, 0.3), 0.08)
+    # headphones: band over the top, cups on the ears
+    band = prim("torus", "headphones", major_radius=3.7, minor_radius=0.35, major_segments=28, minor_segments=8, location=(0, 0, 0.3)); band.rotation_euler = (0, 1.5708, 0); apply_all(band)
+    bm = bmesh.new(); bm.from_mesh(band.data); bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.z < 0.2], context="VERTS"); bm.to_mesh(band.data); bm.free(); keep(band)
+    for sgn in (-1, 1):
+        cup = prim("cylinder", "headphones", radius=1.5, depth=1.2, vertices=16, location=(0, sgn * 3.6, 0)); cup.rotation_euler = (1.5708, 0, 0); bevel(cup, 0.4, 2); apply_all(cup); smooth(cup, 40); keep(cup)
+    keep(prim("cube", "earring", size=0.45, location=(0.1, -3.4, -0.9)))
+    cube("necklace", (2.9, 0, -3.0), (0.3, 1.2, 1.8), 0.1)
+    # limbs (origin at the pivot, hanging down -z)
+    for name, r in (("leg", 1.35), ("arm", 1.1)):
+        o = prim("cylinder", name, radius=r, depth=7.2, vertices=14, location=(0, 0, -3.6)); bevel(o, 0.5, 3); apply_all(o); smooth(o, 45); keep(o)
+    keep(prim("uv_sphere", "hand", radius=1.2, segments=10, ring_count=8, location=(0, 0, -7.6)))
+    cube("shoe_dress", (0.9, 0, -7.4), (3.6, 2.8, 1.5), 0.4)
+    cube("shoe_sneaker", (1.0, 0, -7.2), (4.0, 3.0, 2.0), 0.6)
+    cube("shoe_sole", (1.0, 0, -8.0), (4.2, 3.2, 0.5), 0.15)
+    cube("sleeve", (0, 0, -1.8), (2.7, 2.7, 4.0), 0.4)      # rolled / jacket sleeve on the arm
+    export_glb(parts, os.path.join(OUT, "hero.glb"))
+
 # ------------------------------------------------------------------ props
 def build_props():
     objs = []
@@ -491,6 +587,7 @@ STAGES = {
     "vehicles": lambda: [(reset(), build_vehicle(k)) for k in ("sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental")] and (reset(), build_scooter()),
     "person": lambda: (reset(), build_person()),
     "props": lambda: (reset(), build_props()),
+    "hero": lambda: (reset(), build_hero()),
     "facade": build_facades,
     "surfaces": build_surfaces,
     "sky": render_skies,

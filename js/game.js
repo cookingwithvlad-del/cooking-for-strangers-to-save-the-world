@@ -27,7 +27,8 @@ class Game {
     this.vehicles = []; this.peds = []; this.strangers = []; this.police = []; this.cars = {};
     this.owned = []; this.fare = null; this.skids = []; this.weather = { rain: false, t: 40 + w.rng() * 80 };
     this.radioOn = true; this.respawnQueue = []; this.cook = null;
-    this.spawnHomeVehicles("ny");
+    this.heroes = [];
+    this.spawnHomeVehicles("ny"); this.spawnHeroes("ny");
     this.spawnTraffic(16); this.spawnParked("ny", 14); this.spawnPeds(60); this.spawnStrangers("ny");
     this.setEpisode(0);
     this.renderer.invalidateMap();
@@ -51,7 +52,7 @@ class Game {
     this.radioOn = d.radioOn !== false; radio.set(d.radioStation || 0);
     this.unlocked = new Set(d.unlocked || ["ny"]); this.world.unlocked = this.unlocked;
     this.vehicles = this.vehicles.filter(v => v.kind !== "rental"); this.cars = {};
-    for (const c of this.unlocked) { this.spawnHomeVehicles(c); if (c !== "ny") { this.spawnStrangers(c); this.spawnTraffic(6, c); this.spawnParked(c, 12); } }
+    for (const c of this.unlocked) { this.spawnHomeVehicles(c); if (c !== "ny") { this.spawnHeroes(c); this.spawnStrangers(c); this.spawnTraffic(6, c); this.spawnParked(c, 12); } }
     this.setEpisode(Math.min(d.episodeIdx || 0, EPISODES.length - 1));
     if (d.accepted) this.step = this.ep.type === "visit" ? "visit" : "shop";
     if (this.done.has(this.ep.id)) this.step = null;
@@ -134,6 +135,27 @@ class Game {
     }
     return pd;
   }
+  // Named characters: Anthony works every Home Kitchen, Jean Phil shadowboxes in a New York park, Alex Kislov DJs in Chicago.
+  spawnHeroes(city) {
+    const w = this.world, h = w.homes[city];
+    this.heroes.push({ id: "anthony", city, x: h.door.x + 28, y: h.door.y + 44, angle: -Math.PI / 2, pose: "idle", say: null, sayT: 0, t: 0 });
+    if (city === "ny" && w.parks.ny.length) { const a = w.parks.ny[2] || w.parks.ny[0]; this.heroes.push({ id: "jeanphil", city, x: a.x, y: a.y, angle: -Math.PI / 2, pose: "box", say: null, sayT: 0, t: 0 }); }
+    if (city === "chi" && w.parks.chi.length) { const a = w.parks.chi[1] || w.parks.chi[0]; this.heroes.push({ id: "alex", city, x: a.x, y: a.y, angle: Math.PI / 2, pose: "dj", say: null, sayT: 0, t: 0 }); }
+  }
+  nearHero(r) { let best = null, bd = r; for (const hr of this.heroes) { const d = dist(hr, this.player); if (d < bd) { bd = d; best = hr; } } return best; }
+  talkToHero(hr) {
+    const H = HEROES[hr.id];
+    hr.say = H.lines[Math.floor(Math.random() * H.lines.length)]; hr.sayT = 4; sfx.tick();
+  }
+  updateHeroes(dt) {
+    const p = this.player;
+    for (const hr of this.heroes) {
+      hr.t += dt;
+      if (hr.sayT > 0) { hr.sayT -= dt; if (hr.sayT <= 0) hr.say = null; }
+      const d = dist(hr, p);
+      hr.facing = d < 70 ? Math.atan2(p.y - hr.y, p.x - hr.x) : hr.angle;
+    }
+  }
   spawnStrangers(city) { for (let i = 0; i < 3; i++) this.spawnStranger(city); }
   spawnStranger(city) {
     const w = this.world;
@@ -177,6 +199,7 @@ class Game {
     const figures = [];
     for (let i = 0; i < n; i++) {
       const f = makePerson(rng, ep.city);
+      if (i === 0 && /kislov/.test(text)) { f.hero = "alex"; f.shirt = HEROES.alex.shirt; f.skin = HEROES.alex.skin; f.hair = HEROES.alex.hair; }
       f.hungry = false; f.hailing = false;
       f.dx = n === 1 ? 0 : Math.cos(i / n * 6.28) * 12; f.dy = n === 1 ? 0 : Math.sin(i / n * 6.28) * 12;
       f.angle = n === 1 ? -Math.PI / 2 : Math.atan2(-f.dy, -f.dx);
@@ -333,7 +356,7 @@ class Game {
   }
   unlockCity(city) {
     this.unlocked.add(city);
-    this.spawnHomeVehicles(city); this.spawnStrangers(city); this.spawnTraffic(6, city); this.spawnParked(city, 12);
+    this.spawnHomeVehicles(city); this.spawnHeroes(city); this.spawnStrangers(city); this.spawnTraffic(6, city); this.spawnParked(city, 12);
     for (let i = 0; i < 12; i++) this.spawnPed(city);
     this.renderer.invalidateMap();
     sfx.unlockCity();
@@ -428,6 +451,7 @@ class Game {
     this.updateTraffic(dt);
     this.updatePeds(dt);
     this.updateStrangers(dt);
+    this.updateHeroes(dt);
     this.updatePolice(dt);
     this.updateFare();
     for (let i = this.skids.length - 1; i >= 0; i--) { this.skids[i].life -= dt; if (this.skids[i].life <= 0) this.skids.splice(i, 1); }
@@ -603,6 +627,8 @@ class Game {
     if (this.tryDeliver(36)) return;
     const shop = this.nearShop();
     if (shop) { this.openShop(shop); return; }
+    const hr = this.nearHero(42);
+    if (hr) { this.talkToHero(hr); return; }
     if (this.nearHome()) { this.openModal("plates", this.ui.platesHtml(this)); return; }
     const pd = this.nearPed(40);
     if (pd) this.talkTo(pd);
@@ -660,9 +686,10 @@ class Game {
       else if (this.step === "cook") h = `[F] Cook for ${ep.name}`;
       else h = `${ep.name} is waiting. Still need: ${this.missingIngredients().map(i => ING[i].name).join(", ")}`;
     } else {
-      const s = this.nearStranger(40), shop = this.nearShop(), car = this.nearCar(), pd = this.nearPed(40);
+      const s = this.nearStranger(40), shop = this.nearShop(), car = this.nearCar(), pd = this.nearPed(40), hr = this.nearHero(42);
       if (s) h = this.plates.some(x => x.id === s.plate.id) ? `[F] Hand over ${s.plate.name}` : `${s.name} wants ${s.plate.name} — cook it at home [C]`;
       else if (shop) h = `[F] Shop — ${SHOPS[shop.kind].name}`;
+      else if (hr) h = `[F] Talk — ${HEROES[hr.id].name}, ${HEROES[hr.id].title}`;
       else if (this.nearHome()) h = "[C] Cook quick plates";
       else if (pd) h = pd.hungry && this.plates.length ? `[F] Give ${pd.name} a plate` : `[F] Talk — ${pd.name}, ${pd.job}`;
       else if (car) h = `[E] Get in — ${car.name}${car.ai ? " (it's someone's)" : ""}`;

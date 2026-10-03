@@ -30,6 +30,7 @@ class Renderer {
     this.drawSpot();
     for (const s of g.strangers) this.drawPerson(s.x, s.y + Math.sin(s.t * 3) * 1.5, s.angle, s, s.t, { orange: true });
     for (const pd of g.peds) this.drawPed(pd);
+    for (const hr of g.heroes) { const H = HEROES[hr.id]; this.drawPerson(hr.x, hr.y, hr.facing || hr.angle, { skin: H.skin, shirt: H.outfit === "suit" ? H.jacket : H.outfit === "chef" ? H.jacket : H.shirt, pants: H.pants, hair: H.hair, hairStyle: 0 }, hr.t, { idle: true }); if (hr.say) this.drawSpeech(hr.x, hr.y - 20, hr.say); }
     for (const v of g.vehicles) this.drawVehicle(v);
     for (const v of g.police) this.drawVehicle(v);
     if (!p.vehicle) { this.drawOrly(g.orly); this.drawPlayer(p); }

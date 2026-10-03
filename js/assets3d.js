@@ -1,7 +1,7 @@
 // Loads the Blender-built assets (assets/3d/*) for the 3D renderer. Everything is optional:
 // whatever fails to load, the renderer keeps its primitive fallback for.
 var Assets3D = window.Assets3D = {
-  ready: false, vehicles: {}, person: null, props: {}, tex: {}, sky: {},
+  ready: false, vehicles: {}, person: null, props: {}, hero: null, tex: {}, sky: {},
   src(path) { return (window.ASSET_DATA && window.ASSET_DATA[path]) || path; },
   load(onDone) {
     if (!window.THREE || !THREE.GLTFLoader) { onDone && onDone(this); return; }
@@ -12,6 +12,7 @@ var Assets3D = window.Assets3D = {
     for (const k of ["sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental", "scooter"]) glb("assets/3d/vehicles/" + k + ".glb", p => { this.vehicles[k] = p; });
     glb("assets/3d/person.glb", p => { this.person = p; });
     glb("assets/3d/props.glb", p => { this.props = this.groupProps(p); });
+    glb("assets/3d/hero.glb", p => { this.hero = {}; for (const [name, g] of Object.entries(p)) { const base = name.replace(/\.\d+$/, ""); (this.hero[base] = this.hero[base] || []).push(g); } });
     const facades = [["facade", "facade"], ["facadeGlass", "facade_glass"], ["facadeStucco", "facade_stucco"], ["facadeConcrete", "facade_concrete"]];
     const list = [];
     for (const [k, f] of facades) list.push([k + "Color", f + "_color.jpg"], [k + "Normal", f + "_normal.jpg", true], [k + "Emissive", f + "_emissive.jpg"], [k + "Rough", f + "_rough.jpg", true]);

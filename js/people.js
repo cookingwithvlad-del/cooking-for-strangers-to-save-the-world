@@ -58,3 +58,17 @@ function makePerson(rng, city) {
     hat: rng() < 0.18, bag: rng() < 0.3, hungry: rng() < 0.28, hailing: rng() < 0.3,
   };
 }
+
+// Named characters, built from their reference sheets. Outfits name the Blender parts in assets/3d/hero.glb.
+const HEROES = {
+  vlad:     { name: "Vlad", title: "Truffle Boy", skin: "#f1cfb3", freckles: true, hair: "#c2541f", hairStyle: "short", beard: "#c8551b", outfit: "chef", jacket: "#141518", piping: "#d4a017", apron: "half", apronColor: "#121316", pants: "#141518", shoe: "dress", shoeColor: "#101010", toque: true, eyes: "#4f7a9a",
+    lines: ["Mise en place first. Then fire.", "More tahini than feels reasonable.", "Ten thousand. We're getting there."] },
+  orly:     { name: "Orly Israel", title: "The Legend", skin: "#edc7a6", hair: "#4a3220", hairStyle: "messy", stubble: "#5a4030", outfit: "suit", jacket: "#111318", shirt: "#e9f0f7", tie: "#c9a84a", pants: "#111318", shoe: "dress", shoeColor: "#0e0e0e", glasses: "#0b0b0f", eyes: "#3c2f24",
+    lines: ["Hold the sign higher. Smile. Don't blink.", "Somebody's friend always knows somebody.", "Money ends a transaction. A trade starts a relationship."] },
+  alex:     { name: "Alex Kislov", title: "DJ / Producer", skin: "#d8a677", hair: "#a7722f", hairStyle: "curly", beard: "#6b4a2b", outfit: "shirt", shirt: "#f3efe4", pants: "#1a1a1d", shoe: "sneaker", shoeColor: "#f2f2f2", glasses: "#e0463a", glassesTint: true, headphones: true, necklace: true, eyes: "#6b4a2f",
+    lines: ["Music, people, places. Good energy always.", "Taco Tuesday's at mine. El Milagro tortillas, nothing else.", "You cook, I'll handle the playlist.", "Derby weekend. Last quiet morning, so make the eggs count."] },
+  anthony:  { name: "Chef Anthony", title: "Young Roulade", skin: "#d3a079", hair: "#1f1510", hairStyle: "curly", mustache: "#2a1c12", outfit: "shirt", shirt: "#f6f6f3", apron: "bib", apronColor: "#2b2b2e", pants: "#2b2b2e", shoe: "dress", shoeColor: "#101010", earring: true, eyes: "#2d1f16",
+    lines: ["Prep's done, chef. Knives are sharp.", "Rice first. Always. You taught me that.", "I velveted the chicken. Twenty minutes, not an hour.", "Hollandaise is holding. Don't let it sit."] },
+  jeanphil: { name: "Jean Phil", title: "Shadowboxer", skin: "#f5dcc9", freckles: true, hair: "#e9c87a", hairStyle: "bowl", mustache: "#d6b063", outfit: "suit", jacket: "#8a6a4e", shirt: "#f5f0e6", tie: "#7a2535", pants: "#8a6a4e", shoe: "dress", shoeColor: "#4a2a14", pose: "box", eyes: "#4f7fa6",
+    lines: ["...", "I am not boxing. I am thinking with my hands.", "Houndstooth. It breathes.", "You feed strangers. I hit the air. We both have a practice."] },
+};
