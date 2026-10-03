@@ -1,3 +1,4 @@
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Renderer {
   constructor(canvas, game) {
     this.c = canvas; this.ctx = canvas.getContext("2d"); this.game = game;
@@ -159,7 +160,6 @@ class Renderer {
     const t = g.time, ep = g.ep, look = g.spotLook;
     ctx.fillStyle = "rgba(250,204,21,0.25)";
     ctx.beginPath(); ctx.arc(s.x, s.y, 22 + Math.sin(t * 4) * 3, 0, 7); ctx.fill();
-    const toPlayer = Math.atan2(g.player.y - s.y, g.player.x - s.x);
     const near = dist(g.player, s) < 120;
     look.figures.forEach((f, i) => {
       const fx = s.x + f.dx, fy = s.y + f.dy;

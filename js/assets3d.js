@@ -1,13 +1,13 @@
 // Loads the Blender-built assets (assets/3d/*) for the 3D renderer. Everything is optional:
 // whatever fails to load, the renderer keeps its primitive fallback for.
-var Assets3D = window.Assets3D = {
+window.Assets3D = {
   ready: false, vehicles: {}, person: null, props: {}, tex: {}, sky: {},
   src(path) { return (window.ASSET_DATA && window.ASSET_DATA[path]) || path; },
   load(onDone) {
     if (!window.THREE || !THREE.GLTFLoader) { onDone && onDone(this); return; }
     const gltf = new THREE.GLTFLoader(), texl = new THREE.TextureLoader();
     const jobs = [];
-    const glb = (path, cb) => jobs.push(new Promise(res => gltf.load(this.src(path), g => { try { cb(this.parts(g.scene)); } catch (e) { console.warn(path, e); } res(); }, undefined, e => { console.warn("asset missing:", path); res(); })));
+    const glb = (path, cb) => jobs.push(new Promise(res => gltf.load(this.src(path), g => { try { cb(this.parts(g.scene)); } catch (e) { console.warn(path, e); } res(); }, undefined, () => { console.warn("asset missing:", path); res(); })));
     const tex = (key, path, linear) => jobs.push(new Promise(res => texl.load(this.src(path), t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.encoding = linear ? THREE.LinearEncoding : THREE.sRGBEncoding; this.tex[key] = t; res(); }, undefined, () => res())));
     for (const k of ["sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental", "scooter"]) glb("assets/3d/vehicles/" + k + ".glb", p => { this.vehicles[k] = p; });
     glb("assets/3d/person.glb", p => { this.person = p; });

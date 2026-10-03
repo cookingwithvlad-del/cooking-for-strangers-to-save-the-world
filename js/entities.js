@@ -9,7 +9,9 @@ function tryMove(e, dx, dy, r, solid) {
   if (dy !== 0) { if (!hitsSolid(e.x, e.y + dy, r, solid)) e.y += dy; else res.y = false; }
   return res;
 }
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 function carHits(v, x, y, r) {
   const dx = x - v.x, dy = y - v.y, c = Math.cos(v.angle), s = Math.sin(v.angle);
   const lx = dx * c + dy * s, ly = -dx * s + dy * c;
@@ -32,6 +34,7 @@ const TRAFFIC_MIX = [["sedan", 42], ["taxi", 18], ["van", 12], ["sports", 8], ["
 const CAR_COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#14b8a6", "#f97316", "#e2e8f0", "#64748b", "#facc15", "#0f172a", "#7f1d1d", "#a3e635", "#f472b6"];
 const LANE = 7;
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 function pickTrafficKind(rng) {
   const total = TRAFFIC_MIX.reduce((s, [, w]) => s + w, 0);
   let r = rng() * total;
@@ -39,6 +42,7 @@ function pickTrafficKind(rng) {
   return "sedan";
 }
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Vehicle {
   constructor(kind, x, y, angle, rng) {
     Object.assign(this, VEHICLE_SPECS[kind]);
@@ -168,6 +172,7 @@ class Dog {
   }
 }
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Ped {
   constructor(x, y, rng, city) {
     Object.assign(this, makePerson(rng, city));
@@ -251,6 +256,7 @@ class Ped {
   }
 }
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Stranger {
   constructor(x, y, city, plate, rng) {
     Object.assign(this, makePerson(rng, city));
@@ -259,6 +265,7 @@ class Stranger {
   }
 }
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class Player {
   constructor(x, y) { this.x = x; this.y = y; this.angle = 0; this.r = 8; this.vehicle = null; this.walkT = 0; this.stun = 0; }
 }

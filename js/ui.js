@@ -1,5 +1,6 @@
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class UI {
   constructor() {
     this.$ = id => document.getElementById(id);
@@ -36,7 +37,7 @@ class UI {
       case "journal": g.openJournal(); break;
       case "map": g.openMap(); break;
       case "phone": g.openPhone(ds.tab); break;
-      case "graphics": g.saveGame(false); try { localStorage.setItem("cfs-2d", g.is3d ? "1" : "0"); } catch (e) {} location.reload(); break;
+      case "graphics": g.saveGame(false); try { localStorage.setItem("cfs-2d", g.is3d ? "1" : "0"); } catch { /* storage unavailable */ } location.reload(); break;
       case "buycar": g.buyVehicle(ds.kind); break;
       case "station": g.setRadio(+ds.i); break;
       case "radiotoggle": g.toggleRadio(); break;
@@ -172,7 +173,7 @@ class UI {
       <p class="muted">${next}</p>
       <button class="primary" data-act="close">Let's go</button>`;
   }
-  cookHtml(g, title, cook) {
+  cookHtml(title) {
     return `<div class="cook-head"><img class="chef-photo" src="assets/chef-kitchen.jpg" alt="Vlad in the kitchen" onerror="this.style.display='none'">
       <div><h2>${esc(title)}</h2><p class="muted">Vlad's on the pans. Orly's setting the table. Stop the marker in the green.</p></div></div>
       <div class="cook-dish" id="cook-dish"></div>
