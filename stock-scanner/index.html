@@ -159,6 +159,16 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 footer{font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:8px;max-width:90ch}
 footer a{color:inherit}
 
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.facts div{background:var(--panel-2);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.facts b{font-family:var(--f-mono);font-size:14px;font-weight:500;overflow-wrap:anywhere}
+.list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:12.5px}
+.list li{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:4px}
+.list li span:last-child{font-family:var(--f-mono);white-space:nowrap}
+.srcs{display:flex;flex-wrap:wrap;gap:6px}
+.src{font-size:11.5px;border-radius:999px;padding:2px 9px;background:var(--panel)}
+.src.ok{color:var(--up)} .src.bad{color:var(--down)}
+.via{font-size:10.5px;border-radius:999px;padding:1px 7px;background:var(--panel-2);color:var(--muted);margin-left:6px;font-weight:500}
 @media (max-width:1080px){.main{grid-template-columns:minmax(0,1fr)}.ticket{position:static}}
 @media (max-width:760px){.regime{grid-template-columns:minmax(0,1fr)}input[type=search]{flex:1}.filters{width:100%}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -221,9 +231,13 @@ footer a{color:inherit}
             <th data-k="gapPct">Gap %</th>
             <th data-k="rvol" title="Relative volume, time-adjusted while the market is open">RVOL</th>
             <th data-k="atrPct" title="14-day average true range as % of price">ATR %</th>
+            <th data-k="vwapPct" title="Price vs today's volume-weighted average price (VWAP)">vs VWAP</th>
             <th data-k="pos52" title="Where price sits in its 52-week range">52w range</th>
             <th data-k="buyPct" title="Share of analysts rating Buy or Strong Buy">Analyst buy</th>
             <th data-k="mspr" title="Insider Monthly Share Purchase Ratio, -100 (selling) to +100 (buying), last 3 months">Insider</th>
+            <th data-k="shortPctFloat" title="Short interest as % of float (Yahoo Finance)">Short float</th>
+            <th data-k="pc" title="Put/call volume ratio, nearest expiry. Under 0.7 leans bullish, over 1.2 bearish">P/C</th>
+            <th data-k="upside" title="Upside to the mean analyst price target">Target</th>
             <th data-k="earnDays" title="Trading days until the next earnings report">Earnings</th>
             <th class="l" data-k="tags">Setups</th>
             <th class="l" data-k="none">30d</th>
@@ -237,8 +251,9 @@ footer a{color:inherit}
   </div>
 
   <footer>
-    <div><strong>How the score works.</strong> Each ticker gets five 0–100 readings in the direction of its bias: relative strength against SPY, time-adjusted relative volume, trend (20/50-day averages and 52-week position), institutional sentiment (analyst consensus, its one-month change and insider buying) and catalysts (earnings proximity and news flow). The score is their weighted blend: 25 / 25 / 20 / 15 / 15.</div>
-    <div>Live data comes from <a href="https://finnhub.io" target="_blank" rel="noopener">Finnhub</a> (quotes, daily bars, analyst recommendation trends, insider sentiment from SEC Form 4 filings, earnings calendar, company news). This is a research tool, not investment advice. Free-tier quotes can lag, so confirm every level in your broker before you trade.</div>
+    <div class="srcs" id="sources"></div>
+    <div><strong>How the score works.</strong> Each ticker gets six 0–100 readings in the direction of its bias: relative strength against SPY, time-adjusted relative volume, trend (20/50-day averages and 52-week position), Wall Street and insiders (analyst consensus and its change, price-target upside, recent upgrades, insider buying), options and shorts (put/call ratio, unusual options, FINRA short-sale volume, short interest, StockTwits sentiment) and catalysts (earnings, news, fresh 8-Ks, upgrades). The score is their weighted blend: 20 / 20 / 20 / 15 / 10 / 15.</div>
+    <div>Best data: run <code>node stock-scanner/server.mjs</code> and open <code>http://localhost:8787</code>. The server pulls Yahoo Finance (quotes, pre/post-market, intraday VWAP, options chains, short interest, ownership, analyst targets and upgrades, insider trades, movers), Google News and Google Finance, SEC EDGAR filings, FINRA daily short volume and StockTwits, with no keys. Without the server, the page uses <a href="https://finnhub.io" target="_blank" rel="noopener">Finnhub</a> with your free key. This is a research tool, not investment advice. Free data can lag, so confirm every level in your broker before you trade.</div>
   </footer>
 </div>
 
@@ -247,7 +262,7 @@ footer a{color:inherit}
     <h2 style="font-size:22px;font-weight:900">My watchlist &amp; data</h2>
     <label for="apiKey">Finnhub API key
       <input type="password" id="apiKey" autocomplete="off" placeholder="Paste your key">
-      <span class="hint">Free at finnhub.io/register. Stored only in this browser. Live data needs the page opened outside the Claude viewer (open stock-scanner/index.html from the repo), because artifact pages can't reach outside sites.</span>
+      <span class="hint">Not needed when you run the data server (node stock-scanner/server.mjs), which pulls Yahoo, Google, SEC, FINRA and StockTwits. Otherwise get a free key at finnhub.io/register. Stored only in this browser. Live data needs the page opened outside the Claude viewer (open stock-scanner/index.html from the repo), because artifact pages can't reach outside sites.</span>
     </label>
     <label for="watch">Watchlist
       <textarea id="watch" spellcheck="false"></textarea>
@@ -296,9 +311,13 @@ const SCANS = [
   ['ins','Insiders are buying', r => (r.mspr ?? -999) >= 20],
   ['ana','Analysts warming up', r => r.tags.includes('Upgrades')],
   ['earn','Earnings this week', r => r.earnDays != null && r.earnDays <= 5],
+  ['uoa','Unusual options activity', r => r.tags.includes('Unusual options')],
+  ['sq','Short squeeze watch', r => r.tags.includes('Squeeze watch')],
+  ['ws','Fresh Wall St upgrades', r => r.tags.includes('Upgraded')],
+  ['mov','Yahoo movers & trending', r => !!r.mover],
 ];
 const FH = 'https://finnhub.io/api/v1';
-const W = {momentum:.25, volume:.25, trend:.20, institutional:.15, catalyst:.15};
+const W = {momentum:.20, volume:.20, trend:.20, institutional:.15, flow:.10, catalyst:.15};
 
 /* ---------- state ---------- */
 const store = {
@@ -356,6 +375,11 @@ function analyze(r, mkt){
   const spy = mkt.SPY?.chgPct ?? 0;
   r.pos52 = r.hi52 && r.lo52 && r.hi52 > r.lo52 ? clamp((r.price - r.lo52) / (r.hi52 - r.lo52), 0, 1) : null;
   r.atrPct = r.atr ? r.atr / r.price * 100 : null;
+  r.vwapPct = r.vwap ? (r.price / r.vwap - 1) * 100 : null;
+  r.pc = r.options?.pc ?? null;
+  r.upside = r.target?.mean ? (r.target.mean / r.price - 1) * 100 : null;
+  const recentUps = (r.upgrades || []).filter(u => (Date.now() - Date.parse(u.date)) / 864e5 <= 5);
+  r.netUpgrades = recentUps.filter(u => u.action === 'up').length - recentUps.filter(u => u.action === 'down').length;
   // raw readings, written as "bullish = high"
   const rs = (r.chgPct ?? 0) - spy;
   const momentum = clamp(50 + rs * 9, 0, 100);
@@ -365,16 +389,26 @@ function analyze(r, mkt){
   if (r.pos52 != null) trend = trend == null ? r.pos52 * 100 : trend * .6 + r.pos52 * 100 * .4;
   let institutional = null;
   if (r.buyPct != null || r.mspr != null){
-    const a = r.buyPct != null ? r.buyPct + (r.anaDelta ?? 0) * 4 : null, m = r.mspr != null ? (r.mspr + 100) / 2 : null;
+    const a = r.buyPct != null ? r.buyPct + (r.anaDelta ?? 0) * 4 + clamp(r.upside ?? 0, -25, 25) * .6 + (r.netUpgrades ?? 0) * 6 : null, m = r.mspr != null ? (r.mspr + 100) / 2 : null;
     institutional = clamp(a != null && m != null ? a * .6 + m * .4 : (a ?? m), 0, 100);
   }
+  // flow: options positioning, short interest, short-sale volume and social sentiment
+  let flow = null;
+  const fl = [];
+  if (r.pc != null) fl.push(clamp(50 + (0.9 - r.pc) * 45, 10, 90));
+  if (r.options && (r.options.unusualCalls || r.options.unusualPuts)) fl.push(clamp(50 + (r.options.unusualCalls - r.options.unusualPuts) * 12, 5, 95));
+  if (r.finraShort) fl.push(clamp(50 - (r.finraShort.ratio - .45) * 120, 10, 90));
+  if (r.social?.bullPct != null) fl.push(clamp(r.social.bullPct, 5, 95));
+  if (fl.length) flow = fl.reduce((x, y) => x + y, 0) / fl.length;
+  if (flow != null && (r.shortPctFloat ?? 0) >= 15 && (r.chgPct ?? 0) > 0) flow = clamp(flow + 10, 0, 100);
   let catalyst = r.earnDays == null ? 25 : r.earnDays <= 2 ? 95 : r.earnDays <= 5 ? 75 : r.earnDays <= 10 ? 50 : 25;
-  catalyst = clamp(catalyst + Math.min((r.newsCount ?? 0) * 3, 15) + Math.min(Math.abs(r.gapPct ?? 0) * 3, 15), 0, 100);
+  const fresh8k = r.sec?.last8k && (Date.now() - Date.parse(r.sec.last8k.date)) / 864e5 <= 2;
+  catalyst = clamp(catalyst + Math.min((r.newsCount ?? 0) * 3, 15) + Math.min(Math.abs(r.gapPct ?? 0) * 3, 15) + (recentUps.length ? 10 : 0) + (fresh8k ? 10 : 0), 0, 100);
   // bias: direction of today's move confirmed by trend
   const t = trend ?? 50, c = r.chgPct ?? 0;
   r.bias = c >= .3 && t >= 45 ? 'L' : c <= -.3 && t <= 55 ? 'S' : Math.abs(c) < .3 ? 'N' : (c > 0 ? 'L' : 'S');
   const flip = v => v == null ? null : r.bias === 'S' ? 100 - v : v;
-  r.parts = {momentum: flip(momentum), volume, trend: flip(trend), institutional: flip(institutional), catalyst};
+  r.parts = {momentum: flip(momentum), volume, trend: flip(trend), institutional: flip(institutional), flow: flip(flow), catalyst};
   let sw = 0, sv = 0; for (const k in W) if (r.parts[k] != null){ sw += W[k]; sv += W[k] * r.parts[k]; }
   r.score = sw ? Math.round(sv / sw) : 0;
   if (r.bias === 'N') r.score = Math.round(r.score * .85);
@@ -391,6 +425,15 @@ function analyze(r, mkt){
   if ((r.mspr ?? -999) >= 20) tags.push('Insider buying');
   if ((r.anaDelta ?? 0) >= 2 && (r.buyPct ?? 0) >= 60) tags.push('Upgrades');
   if (r.earnDays != null && r.earnDays <= 5) tags.push('Earnings');
+  if (r.options && (r.options.unusualCalls || r.options.unusualPuts)) tags.push('Unusual options');
+  if ((r.shortPctFloat ?? 0) >= 15 && c >= 2 && (r.rvol ?? 1.5) >= 1.5) tags.push('Squeeze watch');
+  if (r.netUpgrades > 0) tags.push('Upgraded');
+  if (r.netUpgrades < 0) tags.push('Downgraded');
+  if (r.vwapPct != null && Math.abs(r.vwapPct) >= .5) tags.push(r.vwapPct > 0 ? 'Above VWAP' : 'Below VWAP');
+  if (r.pre && /PRE/.test(r.marketState || '') && Math.abs(r.pre.chgPct ?? 0) >= 3) tags.push('Pre-market mover');
+  if (fresh8k) tags.push('New 8-K');
+  if ((r.social?.bullPct ?? 0) >= 75 && (r.social?.n ?? 0) >= 20) tags.push('Social buzz');
+  if (r.mover) tags.unshift(r.mover);
   r.tags = tags;
   return r;
 }
@@ -440,7 +483,12 @@ function buildSample(){
       sma20: sma(closes, 20), sma50: sma(closes, 50), atr: atr(highs, lows, closes),
       hi52: Math.max(hi52, price), lo52: Math.min(lo52, price),
       buyPct: clamp(35 + Rs() * 60, 0, 100), anaDelta: Math.round(gauss(Rs) * 2), mspr: clamp(gauss(Rs) * 35, -100, 100),
-      earnDays: ed, earnDate: null, newsCount: Math.floor(Rs() * 6), news: null
+      earnDays: ed, earnDate: null, newsCount: Math.floor(Rs() * 6), news: null,
+      vwap: (open + price + Math.max(open, price) * 1.006 + Math.min(open, price) * .994) / 4,
+      shortPctFloat: Math.abs(gauss(Rs)) * 6 + (Rs() < .15 ? 14 : 1), shortRatio: 1 + Rs() * 4, instPct: 45 + Rs() * 40,
+      target: {mean: price * (1 + gauss(Rs) * .12 + .06)},
+      options: {pc: clamp(.9 - chgPct * .08 + gauss(Rs) * .2, .25, 2.2), atmIV: .3 + Rs() * .5, movePct: 2 + Rs() * 6, unusualCalls: Rs() < .2 && chgPct > 0 ? 2 : 0, unusualPuts: Rs() < .12 && chgPct < 0 ? 2 : 0, unusual: []},
+      finraShort: {ratio: .35 + Rs() * .25}, social: {bullPct: clamp(55 + chgPct * 6 + gauss(Rs) * 10, 5, 95), n: 30}
     };
   });
   return {mkt, rows};
@@ -567,12 +615,69 @@ function loadSample(){
   renderTicket();
 }
 
+/* ---------- data server (Yahoo, Google, SEC, FINRA, StockTwits) ---------- */
+async function api(path){
+  const res = await fetch(path, {headers: {Accept: 'application/json'}});
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('json')) throw new ApiErr('none', 'No data server');
+  const j = await res.json();
+  if (!res.ok) throw new ApiErr('http', j.error || ('Data server error ' + res.status));
+  return j;
+}
+async function detectServer(){
+  if (!/^https?:$/.test(location.protocol)) return false;
+  try { const h = await api('api/health'); S.health = h; return !!h.ok; } catch { return false; }
+}
+async function loadServer(){
+  S.mode = 'server'; setSource(); notice(null); progress(.1);
+  try {
+    const mktSyms = [...INDEX.map(x => x[0]), ...SECTORS.map(x => x[0])].join(',');
+    const [mk, mv] = await Promise.all([api('api/market?symbols=' + mktSyms), api('api/movers').catch(() => null)]);
+    const mkt = {};
+    for (const q of mk){ const meta = INDEX.find(x => x[0] === q.sym) || SECTORS.find(x => x[0] === q.sym); if (meta) mkt[q.sym] = {sym: q.sym, name: meta[1], price: q.price, chgPct: q.chgPct}; }
+    S.mkt = mkt; renderRegime(); progress(.3);
+    const watch = parseWatch(S.watch), movers = {};
+    if (mv){
+      const add = (list, label, n) => list.filter(x => !watch.includes(x) && !movers[x]).slice(0, n).forEach(x => movers[x] = label);
+      add(mv.gainers || [], 'Yahoo top gainer', 5); add(mv.losers || [], 'Yahoo top loser', 4); add(mv.actives || [], 'Yahoo most active', 4); add(mv.trending || [], 'Yahoo trending', 4);
+    }
+    const syms = [...watch, ...Object.keys(movers)];
+    const rows = await api('api/scan?symbols=' + encodeURIComponent(syms.join(',')));
+    const f = et().frac;
+    S.rows = rows.map(r => {
+      r.mover = movers[r.sym] || null;
+      r.earnDays = tradingDaysUntil(r.earnDate);
+      r.rvol = r.volume && r.avgVol && !/PRE/.test(r.marketState || '') ? r.volume / (r.avgVol * (f != null ? Math.max(f, .05) : 1)) : null;
+      return analyze(r, S.mkt);
+    });
+    S.updated = new Date(); setUpdated(); progress(null); renderRows();
+    if (!S.rows.find(r => r.sym === S.sel)) S.sel = [...S.rows].sort((a, b) => b.score - a.score)[0]?.sym ?? null;
+    renderTicket(); renderSources();
+  } catch (e){
+    progress(null);
+    loadSample(); S.server = true;
+    notice(`<strong>The data server didn't answer.</strong> ${esc(e.message)}. Showing sample data until it does.`);
+    renderSources();
+  }
+}
+async function renderSources(){
+  const el = $('#sources'); if (!el) return;
+  try { S.health = await api('api/health'); } catch {}
+  const names = {yahoo:'Yahoo Finance', google:'Google News & Finance', sec:'SEC EDGAR', finra:'FINRA short volume', stocktwits:'StockTwits', finnhub:'Finnhub'};
+  const h = S.health?.sources || {};
+  el.innerHTML = '<span class="label" style="align-self:center">Sources</span>' + Object.keys(names).map(k => {
+    const x = h[k]; if (!x) return `<span class="src">${names[k]} · not used yet</span>`;
+    const ok = x.ok > 0 && (!x.fail || x.ok >= x.fail);
+    return `<span class="src ${ok ? 'ok' : 'bad'}" title="${esc(x.lastError || '')}">${names[k]} · ${ok ? 'OK' : 'failing'}</span>`;
+  }).join('');
+}
+
 /* ---------- rendering ---------- */
 function notice(html){ const n = $('#notice'); n.hidden = !html; n.innerHTML = html || ''; }
 function progress(f){ const p = $('#progress'); p.hidden = f == null; if (f != null) p.firstElementChild.style.width = (f * 100).toFixed(1) + '%'; }
 function setSource(){
-  const s = $('#source'); s.className = 'pill ' + (S.mode === 'live' ? 'live' : 'sample');
-  s.lastElementChild.textContent = S.mode === 'live' ? 'Live · Finnhub' : 'Sample data · simulated prices';
+  const s = $('#source'); s.className = 'pill ' + (S.mode === 'sample' ? 'sample' : 'live');
+  s.lastElementChild.textContent = S.mode === 'server' ? 'Live · Yahoo, Google, SEC, FINRA, StockTwits' : S.mode === 'live' ? 'Live · Finnhub' : 'Sample data · simulated prices';
 }
 function setUpdated(){ $('#updated').textContent = S.updated ? 'Updated ' + S.updated.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '—'; }
 
@@ -627,7 +732,7 @@ function renderRows(){
   $('#listTitle').textContent = SCANS.find(x => x[0] === S.scan)[1];
   document.querySelectorAll('#grid th').forEach(th => { if (th.dataset.k === S.sort.k) th.setAttribute('aria-sort', S.sort.dir < 0 ? 'descending' : 'ascending'); else th.removeAttribute('aria-sort'); });
   const rows = visibleRows();
-  if (!rows.length){ $('#rows').innerHTML = `<tr><td colspan="14" class="empty">${S.rows.length ? 'No tickers match this scan right now.' : 'Loading tickers…'}</td></tr>`; return; }
+  if (!rows.length){ $('#rows').innerHTML = `<tr><td colspan="18" class="empty">${S.rows.length ? 'No tickers match this scan right now.' : 'Loading tickers…'}</td></tr>`; return; }
   $('#rows').innerHTML = rows.map(r => `
     <tr data-sym="${r.sym}" tabindex="0" aria-selected="${r.sym === S.sel}">
       <td class="l"><div class="sym">${r.sym}<small>${esc(r.name)}</small></div></td>
@@ -638,11 +743,15 @@ function renderRows(){
       <td class="${cls(r.gapPct)}">${pct(r.gapPct)}</td>
       <td class="${(r.rvol ?? 0) >= 2 ? 'up' : ''}">${r.rvol == null ? '—' : r.rvol.toFixed(2) + '×'}</td>
       <td>${r.atrPct == null ? '—' : r.atrPct.toFixed(1) + '%'}</td>
+      <td class="${cls(r.vwapPct)}">${pct(r.vwapPct, 1)}</td>
       <td>${r.pos52 == null ? '—' : `<span class="rangebar" title="${Math.round(r.pos52 * 100)}% of 52-week range"><i style="left:calc(${(r.pos52 * 100).toFixed(0)}% - 1.5px)"></i></span>`}</td>
       <td>${r.buyPct == null ? '—' : Math.round(r.buyPct) + '%'}${r.anaDelta ? ` <span class="${cls(r.anaDelta)}">${r.anaDelta > 0 ? '▲' : '▼'}</span>` : ''}</td>
       <td class="${cls(r.mspr)}">${r.mspr == null ? '—' : (r.mspr > 0 ? '+' : '') + r.mspr.toFixed(0)}</td>
+      <td class="${(r.shortPctFloat ?? 0) >= 15 ? 'down' : ''}">${r.shortPctFloat == null ? '—' : r.shortPctFloat.toFixed(1) + '%'}</td>
+      <td class="${r.pc == null ? '' : r.pc < .7 ? 'up' : r.pc > 1.2 ? 'down' : ''}">${r.pc == null ? '—' : r.pc.toFixed(2)}${r.options?.unusualCalls || r.options?.unusualPuts ? ' <span class="tag hot">UOA</span>' : ''}</td>
+      <td class="${cls(r.upside)}">${pct(r.upside, 0)}</td>
       <td>${r.earnDays == null ? '—' : r.earnDays === 0 ? '<span class="tag hot">Today</span>' : r.earnDays + 'd'}</td>
-      <td class="l"><div class="tags">${r.tags.slice(0, 3).map(t => `<span class="tag ${/Gap & go|Unusual|52w high|Insider|Earnings/.test(t) ? 'hot' : ''}">${esc(t)}</span>`).join('') || '<span class="muted">—</span>'}</div></td>
+      <td class="l"><div class="tags">${r.tags.slice(0, 3).map(t => `<span class="tag ${/Gap & go|Unusual|52w high|Insider|Earnings|Squeeze|Upgraded|Yahoo/.test(t) ? 'hot' : ''}">${esc(t)}</span>`).join('') || '<span class="muted">—</span>'}</div></td>
       <td class="l">${spark(r.closes)}</td>
     </tr>`).join('');
 }
@@ -673,7 +782,7 @@ function chart(r){
 function renderTicket(){
   const r = S.rows.find(x => x.sym === S.sel), el = $('#ticket');
   if (!r){ el.innerHTML = '<p class="muted" style="margin:0">Select a ticker to see its levels, score breakdown and position size.</p>'; return; }
-  const P = r.parts, labels = {momentum:'Rel. strength', volume:'Rel. volume', trend:'Trend', institutional:'Institutional', catalyst:'Catalyst'};
+  const P = r.parts, labels = {momentum:'Rel. strength', volume:'Rel. volume', trend:'Trend', institutional:'Wall St & insiders', flow:'Options & shorts', catalyst:'Catalyst'};
   const long = r.bias !== 'S';
   const stopDefault = r.atr ? (long ? r.price - r.atr : r.price + r.atr) : (long ? r.low : r.high);
   el.innerHTML = `
@@ -696,6 +805,7 @@ function renderTicket(){
     <section><h3>How the score adds up <span class="muted" style="font-weight:600;font-size:13px">(${long ? 'long' : 'short'} view)</span></h3><div class="bars">
       ${Object.keys(W).map(k => `<div class="bar"><span>${labels[k]}</span><span class="track"><i style="width:${P[k] ?? 0}%"></i></span><span class="num">${P[k] == null ? '—' : Math.round(P[k])}</span></div>`).join('')}
     </div></section>
+    ${extraSections(r)}
     <section><h3>How much to buy</h3>
       <div class="sizer">
         <label for="sz-side">Side<select id="sz-side"><option value="L" ${long ? 'selected' : ''}>Long</option><option value="S" ${long ? '' : 'selected'}>Short</option></select></label>
@@ -705,11 +815,57 @@ function renderTicket(){
       </div>
       <div class="out" id="sz-out"></div>
     </section>
-    <section><h3>In the news</h3><ul class="news" id="news">${S.mode === 'live' ? '<li class="muted">Loading…</li>' : '<li class="muted">Company headlines load with live data.</li>'}</ul></section>`;
+    <section><h3>In the news</h3><ul class="news" id="news">${S.mode !== 'sample' ? '<li class="muted">Loading…</li>' : '<li class="muted">Company headlines load with live data.</li>'}</ul></section>`;
   ['sz-side', 'sz-risk', 'sz-entry', 'sz-stop'].forEach(id => $('#' + id).addEventListener('input', size));
   size();
-  if (S.mode === 'live') loadNews(r);
+  if (S.mode !== 'sample') loadNews(r);
 }
+function money(v){ if (v == null || !isFinite(v)) return '—'; const a = Math.abs(v), sgn = v < 0 ? '−' : ''; return sgn + '$' + (a >= 1e12 ? (a / 1e12).toFixed(2) + 'T' : a >= 1e9 ? (a / 1e9).toFixed(1) + 'B' : a >= 1e6 ? (a / 1e6).toFixed(1) + 'M' : a >= 1e3 ? (a / 1e3).toFixed(0) + 'K' : a.toFixed(0)); }
+function big(v){ return v == null ? '—' : v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v.toLocaleString(); }
+function fact(label, value, c = ''){ return `<div><span class="label">${label}</span><b class="${c}">${value}</b></div>`; }
+function extraSections(r){
+  const out = [];
+  if (r.pre || r.post || r.vwap || r.google){
+    out.push(`<section><h3>Session</h3><div class="facts">
+      ${fact('Pre-market', r.pre ? fmt(r.pre.price) + ' <small class="' + cls(r.pre.chgPct) + '">' + pct(r.pre.chgPct, 1) + '</small>' : '—')}
+      ${fact('After hours', r.post ? fmt(r.post.price) + ' <small class="' + cls(r.post.chgPct) + '">' + pct(r.post.chgPct, 1) + '</small>' : '—')}
+      ${fact('VWAP', fmt(r.vwap), cls(r.vwapPct))}
+      ${fact('Pre-mkt high', fmt(r.preHigh))}${fact('Pre-mkt low', fmt(r.preLow))}
+      ${fact('15-min range', r.orHigh ? fmt(r.orLow) + '–' + fmt(r.orHigh) : '—')}
+    </div>${r.google?.price ? `<p class="muted" style="margin:8px 0 0;font-size:12px">Google Finance shows ${fmt(r.google.price)} (${pct((r.google.price / r.price - 1) * 100, 2)} vs Yahoo).</p>` : ''}</section>`);
+  }
+  if (r.target || r.upgrades?.length){
+    out.push(`<section><h3>Wall Street</h3><div class="facts">
+      ${fact('Avg target', fmt(r.target?.mean), cls(r.upside))}${fact('Upside', pct(r.upside, 1), cls(r.upside))}${fact('Range', r.target?.low ? fmt(r.target.low, 0) + '–' + fmt(r.target.high, 0) : '—')}
+    </div>${r.upgrades?.length ? '<ul class="list">' + r.upgrades.slice(0, 5).map(u => `<li><span>${esc(u.firm)} <span class="muted">${esc(u.from ? u.from + ' → ' : '')}${esc(u.to)}</span></span><span class="${u.action === 'up' ? 'up' : u.action === 'down' ? 'down' : 'muted'}">${esc(u.action === 'up' ? 'Upgrade' : u.action === 'down' ? 'Downgrade' : u.action === 'init' ? 'Initiated' : 'Reiterated')} · ${esc(u.date.slice(5))}</span></li>`).join('') + '</ul>' : ''}</section>`);
+  }
+  if (r.instPct != null || r.holders?.length || r.insiderTx?.length){
+    out.push(`<section><h3>Who owns it</h3><div class="facts">
+      ${fact('Institutions', r.instPct == null ? '—' : r.instPct.toFixed(1) + '%')}${fact('Insiders', r.insiderPct == null ? '—' : r.insiderPct.toFixed(1) + '%')}${fact('Insider net 90d', money(r.insiderNet), cls(r.insiderNet))}
+    </div>${r.holders?.length ? '<ul class="list">' + r.holders.map(h => `<li><span>${esc(h.org)}</span><span>${h.pct == null ? '—' : h.pct.toFixed(2) + '%'} <span class="${cls(h.chg)}">${h.chg == null ? '' : pct(h.chg, 1)}</span></span></li>`).join('') + '</ul>' : ''}
+    ${r.insiderTx?.length ? '<ul class="list">' + r.insiderTx.map(x => `<li><span>${esc(x.who)} <span class="muted">${esc(x.text || '')}</span></span><span>${money(x.value)} · ${esc(x.date.slice(5))}</span></li>`).join('') + '</ul>' : ''}</section>`);
+  }
+  if (r.options){
+    const o = r.options;
+    out.push(`<section><h3>Options flow ${o.exp ? '<span class="muted" style="font-weight:600;font-size:13px">(exp ' + esc(o.exp) + ')</span>' : ''}</h3><div class="facts">
+      ${fact('Put/call', o.pc == null ? '—' : o.pc.toFixed(2), o.pc == null ? '' : o.pc < .7 ? 'up' : o.pc > 1.2 ? 'down' : '')}${fact('ATM IV', o.atmIV == null ? '—' : (o.atmIV * 100).toFixed(0) + '%')}${fact('Implied move', o.movePct == null ? '—' : '±' + o.movePct.toFixed(1) + '%')}
+      ${o.callVol != null ? fact('Call volume', big(o.callVol)) + fact('Put volume', big(o.putVol)) + fact('Unusual', (o.unusual?.length || 0) + ' contracts') : ''}
+    </div>${o.unusual?.length ? '<ul class="list">' + o.unusual.map(x => `<li><span class="${x.type === 'Call' ? 'up' : 'down'}">${x.type} ${fmt(x.strike)}</span><span>${big(x.volume)} vol / ${big(x.oi)} OI</span></li>`).join('') + '</ul>' : ''}</section>`);
+  }
+  if (r.shortPctFloat != null || r.finraShort || r.social){
+    out.push(`<section><h3>Shorts &amp; the crowd</h3><div class="facts">
+      ${fact('Short float', r.shortPctFloat == null ? '—' : r.shortPctFloat.toFixed(1) + '%', (r.shortPctFloat ?? 0) >= 15 ? 'down' : '')}${fact('Days to cover', r.shortRatio == null ? '—' : r.shortRatio.toFixed(1))}${fact('Short vol today', r.finraShort ? (r.finraShort.ratio * 100).toFixed(0) + '%' : '—')}
+      ${fact('Float', big(r.float))}${fact('StockTwits bulls', r.social?.bullPct == null ? '—' : Math.round(r.social.bullPct) + '%', r.social?.bullPct == null ? '' : r.social.bullPct >= 60 ? 'up' : r.social.bullPct <= 40 ? 'down' : '')}${fact('Watchers', big(r.social?.watchers))}
+    </div></section>`);
+  }
+  if (r.sec){
+    out.push(`<section><h3>SEC filings</h3><div class="facts">
+      ${fact('Form 4s, 30d', r.sec.form4_30d)}${fact('13D/G, 90d', r.sec.own13_90d)}${fact('Latest 8-K', r.sec.last8k ? `<a href="${esc(r.sec.last8k.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(r.sec.last8k.date)}</a>` : '—')}
+    </div></section>`);
+  }
+  return out.join('');
+}
+
 function explain(r){
   const out = [], P = r.parts, dir = r.bias === 'S' ? 'down' : 'up';
   if (r.chgPct != null) out.push(`${r.sym} is ${r.chgPct >= 0 ? 'up' : 'down'} ${Math.abs(r.chgPct).toFixed(1)}% today, ${Math.abs(r.chgPct - (S.mkt.SPY?.chgPct ?? 0)) < .3 ? 'in line with' : (r.chgPct > (S.mkt.SPY?.chgPct ?? 0) ? 'ahead of' : 'behind')} the S&P 500.`);
@@ -717,8 +873,14 @@ function explain(r){
   if (r.pos52 != null) out.push(r.pos52 > .9 ? 'It is near its highest price of the past year.' : r.pos52 < .1 ? 'It is near its lowest price of the past year.' : `It sits ${Math.round(r.pos52 * 100)}% of the way up its one-year range.`);
   if (r.buyPct != null) out.push(`${Math.round(r.buyPct)}% of analysts rate it a buy${r.anaDelta > 0 ? ', up from last month' : r.anaDelta < 0 ? ', down from last month' : ''}.`);
   if (r.mspr != null && Math.abs(r.mspr) >= 20) out.push(r.mspr > 0 ? 'Company insiders have been buying shares.' : 'Company insiders have been selling shares.');
+  if (r.mover) out.unshift(`It is on Yahoo Finance's ${r.mover.replace('Yahoo ', '')} list.`);
+  if (r.upside != null) out.push(`The average Wall Street price target is ${Math.abs(r.upside).toFixed(0)}% ${r.upside >= 0 ? 'above' : 'below'} today's price.`);
+  if (r.netUpgrades > 0) out.push('It was upgraded in the last few days.');
+  if (r.options && (r.options.unusualCalls || r.options.unusualPuts)) out.push(r.options.unusualCalls >= r.options.unusualPuts ? 'Big call-option bets are coming in, a sign some traders expect a move up.' : 'Big put-option bets are coming in, a sign some traders are hedging or betting on a drop.');
+  if ((r.shortPctFloat ?? 0) >= 15) out.push(`${r.shortPctFloat.toFixed(0)}% of its tradable shares are sold short, so a rally can force short sellers to buy back.`);
+  if (r.social?.bullPct != null && (r.social.bullPct >= 70 || r.social.bullPct <= 30)) out.push(`On StockTwits ${Math.round(r.social.bullPct)}% of tagged posts are bullish.`);
   if (r.earnDays != null && r.earnDays <= 5) out.push(r.earnDays === 0 ? 'Earnings come out today, so expect big swings.' : `Earnings land in ${r.earnDays} trading day${r.earnDays === 1 ? '' : 's'}, so expect bigger swings.`);
-  return out.join(' ');
+  return out.slice(0, 6).join(' ');
 }
 function size(){
   const side = $('#sz-side').value, risk = +$('#sz-risk').value, entry = +$('#sz-entry').value, stop = +$('#sz-stop').value;
@@ -737,11 +899,13 @@ const newsCache = {};
 async function loadNews(r){
   const ul = () => $('#news'), sym = r.sym;
   try {
-    if (!newsCache[sym]){ const now = new Date(); newsCache[sym] = await fh('/company-news', {symbol: sym, from: ymd(new Date(now - 864e5 * 4)), to: ymd(now)}); }
+    if (!newsCache[sym]){
+      if (S.mode === 'server') newsCache[sym] = await api(`api/news?symbol=${encodeURIComponent(sym)}&name=${encodeURIComponent(r.name || '')}`);
+      else { const now = new Date(); newsCache[sym] = ((await fh('/company-news', {symbol: sym, from: ymd(new Date(now - 864e5 * 4)), to: ymd(now)})) || []).map(n => ({title: n.headline, url: n.url, source: n.source, time: n.datetime * 1000, via: 'Finnhub'})); }
+    }
     if (S.sel !== sym || !ul()) return;
-    const items = (Array.isArray(newsCache[sym]) ? newsCache[sym] : []).slice(0, 6);
-    r.newsCount = items.length;
-    ul().innerHTML = items.length ? items.map(n => `<li><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.headline)}</a><small>${esc(n.source)} · ${new Date(n.datetime * 1000).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</small></li>`).join('') : '<li class="muted">No headlines in the last four days.</li>';
+    const items = (Array.isArray(newsCache[sym]) ? newsCache[sym] : []).slice(0, 8);
+    ul().innerHTML = items.length ? items.map(n => `<li><a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a><small>${esc(n.source || '')} · ${new Date(n.time).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}<span class="via">${esc(n.via || '')}</span></small></li>`).join('') : '<li class="muted">No headlines in the last few days.</li>';
   } catch { if (ul()) ul().innerHTML = '<li class="muted">Headlines could not be loaded.</li>'; }
 }
 function select(sym){ S.sel = sym; document.querySelectorAll('#rows tr').forEach(tr => tr.setAttribute('aria-selected', tr.dataset.sym === sym)); renderTicket(); }
@@ -756,7 +920,7 @@ document.querySelector('#grid thead').addEventListener('click', e => {
   const th = e.target.closest('th'); if (!th || th.dataset.k === 'none') return;
   const k = th.dataset.k; S.sort = {k, dir: S.sort.k === k ? -S.sort.dir : (k === 'sym' || k === 'bias' ? 1 : -1)}; renderRows();
 });
-$('#refresh').addEventListener('click', () => { if (S.mode === 'live' && S.key) loadLive(true); else loadSample(); });
+$('#refresh').addEventListener('click', () => { if (S.server) loadServer(); else if (S.mode === 'live' && S.key) loadLive(true); else loadSample(); });
 const dlg = $('#settings');
 $('#openSettings').addEventListener('click', () => {
   $('#apiKey').value = S.key; $('#watch').value = S.watch; $('#acct').value = S.acct; $('#riskPct').value = S.risk;
@@ -767,6 +931,7 @@ $('#settingsForm').addEventListener('submit', e => {
   S.key = $('#apiKey').value.trim(); S.watch = parseWatch($('#watch').value).join(' ') || DEFAULT_WATCH;
   S.acct = Math.max(0, +$('#acct').value || 0); S.risk = clamp(+$('#riskPct').value || .5, .05, 10);
   store.set('key', S.key); store.set('watch', S.watch); store.set('acct', S.acct); store.set('risk', S.risk);
+  if (how === 'live' && S.server){ S.sel = null; loadServer(); return; }
   if (how === 'live'){
     if (!S.key){ e.preventDefault(); $('#apiKey').focus(); $('#apiKey').placeholder = 'A key is needed for live data'; return; }
     S.candlesBlocked = false; S.rows = []; S.sel = null; renderRows(); loadLive(false);
@@ -778,7 +943,10 @@ tickClock(); setInterval(tickClock, 15000);
 pruneCache();
 $('#biasFilter').value = S.bias;
 loadSample();
-if (S.key) loadLive(false);
+detectServer().then(ok => {
+  if (ok){ S.server = true; loadServer(); setInterval(() => { if (!document.hidden && S.mode === 'server' && et().session !== 'Closed') loadServer(); }, 60000); }
+  else if (S.key) loadLive(false);
+});
 })();
 </script>
 
