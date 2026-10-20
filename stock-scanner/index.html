@@ -117,6 +117,22 @@ tbody tr[aria-selected="true"] td:first-child{box-shadow:inset 4px 0 0 var(--acc
 .bias{font-family:var(--f-body);font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
 .bias.L{background:var(--up-soft);color:var(--up)} .bias.S{background:var(--down-soft);color:var(--down)} .bias.N{background:var(--panel-2);color:var(--muted)}
 .tags{display:flex;gap:4px;flex-wrap:nowrap}
+.sig{display:inline-flex;align-items:baseline;gap:6px;font-family:var(--f-body);font-size:11.5px;font-weight:800;letter-spacing:.02em;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.sig small{font-family:var(--f-mono);font-weight:500;font-size:11px;opacity:.85}
+.sig.SB{background:var(--up);color:var(--panel)} .sig.B{background:var(--up-soft);color:var(--up)} .sig.H{background:var(--panel-2);color:var(--muted)}
+.sig.S{background:var(--down-soft);color:var(--down)} .sig.SS{background:var(--down);color:var(--panel)} .sig.NA{background:var(--panel-2);color:var(--muted);font-weight:600}
+.signal{border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel-2)}
+.signal.SB,.signal.B{background:var(--up-soft)} .signal.S,.signal.SS{background:var(--down-soft)}
+.signal .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.signal .big{font-family:var(--f-display);font-weight:900;font-size:24px;line-height:1}
+.signal.SB .big,.signal.B .big{color:var(--up)} .signal.S .big,.signal.SS .big{color:var(--down)}
+.signal ul{margin:0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.signal .fine{font-size:11.5px;color:var(--muted)}
+.factors{display:flex;flex-direction:column;gap:6px}
+.factor{display:grid;grid-template-columns:118px 1fr 34px;gap:8px;align-items:center;font-size:12px}
+.factor .track{position:relative;height:8px;background:var(--panel);border-radius:999px}
+.factor .track::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line)}
+.factor .track i{position:absolute;top:0;bottom:0;border-radius:999px}
 .tag{font-family:var(--f-body);font-size:11.5px;border-radius:999px;padding:2px 9px;color:var(--muted);background:var(--panel-2)}
 .tag.hot{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .rangebar{position:relative;width:64px;height:8px;border-radius:999px;background:linear-gradient(90deg,var(--down-soft),var(--up-soft));display:inline-block;vertical-align:middle}
@@ -224,7 +240,8 @@ footer a{color:inherit}
         <table id="grid">
           <thead><tr>
             <th data-k="sym" class="l">Ticker</th>
-            <th data-k="score">Score</th>
+            <th data-k="sigScore" title="Buy / Hold / Sell signal from analyst consensus, rating changes, price targets, technicals, fundamentals, insiders and the crowd. -100 to +100">Signal</th>
+            <th data-k="score" title="Day-trading setup score for today's move">Score</th>
             <th data-k="bias" class="l">Bias</th>
             <th data-k="price">Last</th>
             <th data-k="chgPct">Chg %</th>
@@ -252,6 +269,7 @@ footer a{color:inherit}
 
   <footer>
     <div class="srcs" id="sources"></div>
+    <div><strong>How the signal works.</strong> Seven readings from −1 to +1 are blended into a −100 to +100 signal: analyst consensus from Yahoo Finance (and Finnhub when a key is set), 25%; upgrades, downgrades and the change in buy ratings over 30 days, 15%; upside to the average price target, where about +8% counts as neutral because targets run optimistic, 20%; the chart (20/50-day averages, 3-month return, RSI), 20%; revenue and earnings growth and profit margin, 10%; insider buying or selling, 5%; options put/call ratio and StockTwits sentiment, 5%. +45 or more is Strong buy, +20 Buy, −20 Sell, −45 Strong sell, anything between is Hold. A buy call in a clear downtrend, or a sell call on a rising stock analysts like, is held back to Hold. Missing inputs are left out and the confidence drops. It is a summary of other people's research, not financial advice.</div>
     <div><strong>How the score works.</strong> Each ticker gets six 0–100 readings in the direction of its bias: relative strength against SPY, time-adjusted relative volume, trend (20/50-day averages and 52-week position), Wall Street and insiders (analyst consensus and its change, price-target upside, recent upgrades, insider buying), options and shorts (put/call ratio, unusual options, FINRA short-sale volume, short interest, StockTwits sentiment) and catalysts (earnings, news, fresh 8-Ks, upgrades). The score is their weighted blend: 20 / 20 / 20 / 15 / 10 / 15.</div>
     <div>Best data: run <code>node stock-scanner/server.mjs</code> and open <code>http://localhost:8787</code>. The server pulls Yahoo Finance (quotes, pre/post-market, intraday VWAP, options chains, short interest, ownership, analyst targets and upgrades, insider trades, movers), Google News and Google Finance, SEC EDGAR filings, FINRA daily short volume and StockTwits, with no keys. Without the server, the page uses <a href="https://finnhub.io" target="_blank" rel="noopener">Finnhub</a> with your free key. This is a research tool, not investment advice. Free data can lag, so confirm every level in your broker before you trade.</div>
   </footer>
@@ -304,6 +322,9 @@ const SAMPLE_BOOK = { // name, sector, reference price for the simulation
 };
 const SCANS = [
   ['all','Everything on your watchlist', () => true],
+  ['sbuy','Strong buy signals', r => r.signal?.code === 'SB'],
+  ['buy','All buy signals', r => r.signal?.code === 'SB' || r.signal?.code === 'B'],
+  ['sell','Sell signals', r => r.signal?.code === 'S' || r.signal?.code === 'SS'],
   ['top','Top picks today (A & B)', r => r.score >= 60],
   ['gap','Big movers at the open', r => Math.abs(r.gapPct ?? 0) >= 2],
   ['vol','Crowds piling in', r => (r.rvol ?? 0) >= 2],
@@ -326,7 +347,7 @@ const store = {
 };
 const S = {
   key: store.get('key',''), watch: store.get('watch', DEFAULT_WATCH), acct: store.get('acct', 50000), risk: store.get('risk', 0.5),
-  mode: 'sample', rows: [], mkt: {}, scan: store.get('scan','all'), bias: 'all', q: '', sort: {k:'score', dir:-1},
+  mode: 'sample', rows: [], mkt: {}, scan: store.get('scan','all'), bias: 'all', q: '', sort: {k:'sigScore', dir:-1},
   sel: null, updated: null, candlesBlocked: false, earnings: {}
 };
 const $ = s => document.querySelector(s);
@@ -435,8 +456,94 @@ function analyze(r, mkt){
   if ((r.social?.bullPct ?? 0) >= 75 && (r.social?.n ?? 0) >= 20) tags.push('Social buzz');
   if (r.mover) tags.unshift(r.mover);
   r.tags = tags;
+  signal(r);
   return r;
 }
+
+/* ---------- buy / sell signal ----------
+   Each factor is a reading from -1 (bearish) to +1 (bullish). The signal is their weighted average over the
+   factors that have data, shown as -100..+100. Wall Street's view leads; the chart can veto a call that fights it. */
+const SIG_W = {consensus:.25, revisions:.15, target:.20, technicals:.20, fundamentals:.10, insiders:.05, crowd:.05};
+const SIG_LABEL = {consensus:'Analyst rating', revisions:'Rating changes', target:'Price target', technicals:'Chart trend', fundamentals:'Growth & profit', insiders:'Insiders', crowd:'Options & crowd'};
+const SIG_NAME = {SB:'Strong buy', B:'Buy', H:'Hold', S:'Sell', SS:'Strong sell', NA:'Not enough data'};
+function rsi(c, n = 14){
+  if (!c || c.length < n + 1) return null;
+  let g = 0, l = 0;
+  for (let i = c.length - n; i < c.length; i++){ const d = c[i] - c[i - 1]; if (d > 0) g += d; else l -= d; }
+  return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+}
+function signal(r){
+  const f = {}, say = {}, avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const n = Math.max(r.analysts ?? 0, r.target?.n ?? 0, r.fhAnalysts ?? 0) || null;
+  // Analyst consensus: Yahoo's mean rating (1 strong buy … 5 strong sell) or the share rating Buy; Finnhub's split when available.
+  const cons = [];
+  if (r.recMean != null) cons.push(clamp((3 - r.recMean) / 1.5, -1, 1));
+  else if (r.buyPct != null) cons.push(clamp((r.buyPct - 50) / 40, -1, 1));
+  if (r.fhBuyPct != null) cons.push(clamp((r.fhBuyPct - 50) / 40, -1, 1));
+  if (cons.length){
+    f.consensus = avg(cons) * (n != null && n < 3 ? .5 : 1);
+    const parts = [];
+    if (r.recMean != null) parts.push(`average analyst rating ${r.recMean.toFixed(1)} on a 1 (strong buy) to 5 (strong sell) scale`);
+    if (r.buyPct != null) parts.push(`${Math.round(r.buyPct)}% rate it a buy`);
+    say.consensus = (n ? `${n} analysts: ` : '') + parts.join(', ');
+  }
+  // Rating changes: more or fewer buy ratings than last month, and upgrades vs downgrades in 30 days.
+  const ups = r.ups30 ?? (r.upgrades || []).filter(u => u.action === 'up').length, downs = r.downs30 ?? (r.upgrades || []).filter(u => u.action === 'down').length;
+  if (r.anaDelta != null || r.upgrades){
+    f.revisions = clamp((r.anaDelta ?? 0) * .15 + (ups - downs) * .3, -1, 1);
+    const bits = [];
+    if (ups || downs) bits.push(`${ups} upgrade${ups === 1 ? '' : 's'} and ${downs} downgrade${downs === 1 ? '' : 's'} in the last 30 days`);
+    if (r.anaDelta) bits.push(`${Math.abs(r.anaDelta)} ${r.anaDelta > 0 ? 'more' : 'fewer'} buy rating${Math.abs(r.anaDelta) === 1 ? '' : 's'} than last month`);
+    say.revisions = bits.length ? bits.join('; ') : 'no rating changes in the last month';
+  }
+  // Price target: analysts' targets run optimistic, so about +8% counts as neutral.
+  if (r.upside != null){
+    f.target = clamp((r.upside - 8) / 20, -1, 1) * (n != null && n < 3 ? .5 : 1);
+    say.target = `average price target $${fmt(r.target.mean)} is ${Math.abs(r.upside).toFixed(0)}% ${r.upside >= 0 ? 'above' : 'below'} the price`;
+  }
+  // Technicals: trend vs 20/50-day averages, 3-month return, RSI extremes, or the 52-week position as a fallback.
+  const c = r.closes, ret3m = c && c.length > 63 ? (c.at(-1) / c.at(-64) - 1) * 100 : null;
+  r.rsi = rsi(c); r.ret3m = ret3m;
+  if (r.sma50 != null || r.pos52 != null){
+    let t = 0; const bits = [];
+    if (r.sma50 != null){
+      t += r.price > r.sma50 ? .3 : -.3; t += r.sma20 > r.sma50 ? .2 : -.2; t += r.price > r.sma20 ? .15 : -.15;
+      bits.push(`price is ${r.price > r.sma50 ? 'above' : 'below'} its 50-day average${r.sma20 > r.sma50 ? ' and the short-term trend is up' : ' and the short-term trend is down'}`);
+    } else { t += (r.pos52 * 2 - 1) * .5; bits.push(`it sits ${Math.round(r.pos52 * 100)}% of the way up its one-year range`); }
+    if (ret3m != null){ t += clamp(ret3m / 25, -1, 1) * .25; bits.push(`${ret3m >= 0 ? 'up' : 'down'} ${Math.abs(ret3m).toFixed(0)}% over 3 months`); }
+    if (r.rsi != null && r.rsi >= 75){ t -= .15; bits.push(`RSI ${r.rsi.toFixed(0)} says it is overbought`); }
+    if (r.rsi != null && r.rsi <= 30){ t += .1; bits.push(`RSI ${r.rsi.toFixed(0)} says it is oversold`); }
+    f.technicals = clamp(t, -1, 1); say.technicals = bits.join(', ');
+  }
+  // Fundamentals: year-over-year revenue and earnings growth, and whether it makes money.
+  if (r.revenueGrowth != null || r.earningsGrowth != null || r.profitMargin != null){
+    let v = 0, w = 0; const bits = [];
+    if (r.revenueGrowth != null){ v += clamp(r.revenueGrowth / .15, -1, 1) * .5; w += .5; bits.push(`revenue ${r.revenueGrowth >= 0 ? 'up' : 'down'} ${Math.abs(r.revenueGrowth * 100).toFixed(0)}% a year`); }
+    if (r.earningsGrowth != null){ v += clamp(r.earningsGrowth / .25, -1, 1) * .3; w += .3; bits.push(`earnings ${r.earningsGrowth >= 0 ? 'up' : 'down'} ${Math.abs(r.earningsGrowth * 100).toFixed(0)}%`); }
+    if (r.profitMargin != null){ v += (r.profitMargin > 0 ? 1 : -1) * .2; w += .2; bits.push(`${(r.profitMargin * 100).toFixed(0)}% profit margin`); }
+    f.fundamentals = v / w; say.fundamentals = bits.join(', ');
+  }
+  if (r.mspr != null){ f.insiders = clamp(r.mspr / 100, -1, 1); say.insiders = Math.abs(r.mspr) < 10 ? 'insider buying and selling roughly balance' : `insiders have been net ${r.mspr > 0 ? 'buyers' : 'sellers'}`; }
+  const crowd = [], cb = [];
+  if (r.pc != null){ crowd.push(clamp((.9 - r.pc) / .6, -1, 1)); cb.push(`options put/call ratio ${r.pc.toFixed(2)}`); }
+  if (r.social?.bullPct != null){ crowd.push(clamp((r.social.bullPct - 55) / 35, -1, 1)); cb.push(`${Math.round(r.social.bullPct)}% of StockTwits posts bullish`); }
+  if (crowd.length){ f.crowd = avg(crowd); say.crowd = cb.join(', '); }
+
+  let sw = 0, sv = 0; for (const k in SIG_W) if (f[k] != null){ sw += SIG_W[k]; sv += SIG_W[k] * f[k]; }
+  const score = sw ? Math.round(sv / sw * 100) : 0;
+  let code = score >= 45 ? 'SB' : score >= 20 ? 'B' : score <= -45 ? 'SS' : score <= -20 ? 'S' : 'H';
+  const notes = [];
+  if (sw < .45 || (f.consensus == null && f.technicals == null)){ code = 'NA'; notes.push('Too few sources have data on this ticker for a call.'); }
+  if ((code === 'SB' || code === 'B') && (f.technicals ?? 0) <= -.4){ code = 'H'; notes.push('The numbers lean buy, but the chart is in a downtrend, so this waits for the trend to turn.'); }
+  if ((code === 'SS' || code === 'S') && (f.technicals ?? 0) >= .4 && (f.consensus ?? 0) > 0){ code = 'H'; notes.push('The numbers lean sell, but the chart is still rising and analysts are positive, so this stays a hold.'); }
+  if (r.earnDays != null && r.earnDays <= 3) notes.push(r.earnDays === 0 ? 'Earnings come out today, so this can flip on the report.' : `Earnings land in ${r.earnDays} trading day${r.earnDays === 1 ? '' : 's'}, so this can flip on the report.`);
+  const conf = code === 'NA' ? 'Low' : sw >= .85 && (n ?? 0) >= 10 ? 'High' : sw >= .6 && (n ?? 0) >= 3 ? 'Medium' : 'Low';
+  const ranked = Object.keys(f).map(k => ({k, v: f[k], c: f[k] * SIG_W[k], text: say[k]})).sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
+  r.signal = {code, label: SIG_NAME[code], score, conf, coverage: sw, factors: f, pros: ranked.filter(x => x.v >= .15), cons: ranked.filter(x => x.v <= -.15), notes};
+  r.sigScore = code === 'NA' ? null : score;
+  return r.signal;
+}
+const sigPill = r => r.signal ? `<span class="sig ${r.signal.code}">${r.signal.code === 'NA' ? 'N/A' : r.signal.label.toUpperCase()}${r.signal.code === 'NA' ? '' : ` <small>${r.signal.score > 0 ? '+' : ''}${r.signal.score}</small>`}</span>` : '—';
 
 /* ---------- sample data (deterministic per day) ---------- */
 function rng(seed){ let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -482,11 +589,13 @@ function buildSample(){
       rvol, volume: hist.avgV * rvol * frac, avgVol: hist.avgV, closes, highs, lows,
       sma20: sma(closes, 20), sma50: sma(closes, 50), atr: atr(highs, lows, closes),
       hi52: Math.max(hi52, price), lo52: Math.min(lo52, price),
-      buyPct: clamp(35 + Rs() * 60, 0, 100), anaDelta: Math.round(gauss(Rs) * 2), mspr: clamp(gauss(Rs) * 35, -100, 100),
+      buyPct: clamp(35 + Rs() * 60, 0, 100), analysts: 8 + Math.floor(Rs() * 40), anaDelta: Math.round(gauss(Rs) * 2), mspr: clamp(gauss(Rs) * 35, -100, 100),
       earnDays: ed, earnDate: null, newsCount: Math.floor(Rs() * 6), news: null,
       vwap: (open + price + Math.max(open, price) * 1.006 + Math.min(open, price) * .994) / 4,
       shortPctFloat: Math.abs(gauss(Rs)) * 6 + (Rs() < .15 ? 14 : 1), shortRatio: 1 + Rs() * 4, instPct: 45 + Rs() * 40,
-      target: {mean: price * (1 + gauss(Rs) * .12 + .06)},
+      target: {mean: price * (1 + gauss(Rs) * .12 + .06), n: 8 + Math.floor(Rs() * 40)},
+      revenueGrowth: gauss(Rs) * .12 + .08, earningsGrowth: gauss(Rs) * .25 + .1, profitMargin: gauss(Rs) * .12 + .12,
+      ups30: Rs() < .25 ? 1 + Math.floor(Rs() * 2) : 0, downs30: Rs() < .15 ? 1 : 0,
       options: {pc: clamp(.9 - chgPct * .08 + gauss(Rs) * .2, .25, 2.2), atmIV: .3 + Rs() * .5, movePct: 2 + Rs() * 6, unusualCalls: Rs() < .2 && chgPct > 0 ? 2 : 0, unusualPuts: Rs() < .12 && chgPct < 0 ? 2 : 0, unusual: []},
       finraShort: {ratio: .35 + Rs() * .25}, social: {bullPct: clamp(55 + chgPct * 6 + gauss(Rs) * 10, 5, 95), n: 30}
     };
@@ -537,6 +646,9 @@ async function loadTicker(sym, quoteOnly){
   r.hi52 = Math.max(m['52WeekHigh'] ?? r.price, r.price); r.lo52 = Math.min(m['52WeekLow'] ?? r.price, r.price);
   r.avgVol = m['10DayAverageTradingVolume'] ? m['10DayAverageTradingVolume'] * 1e6 : null;
   r.beta = m.beta ?? null;
+  if (m.revenueGrowthTTMYoy != null) r.revenueGrowth = m.revenueGrowthTTMYoy / 100;
+  if (m.epsGrowthTTMYoy != null) r.earningsGrowth = m.epsGrowthTTMYoy / 100;
+  if (m.netProfitMarginTTM != null) r.profitMargin = m.netProfitMarginTTM / 100;
   if (Array.isArray(rec) && rec.length){
     const tot = x => x.strongBuy + x.buy + x.hold + x.sell + x.strongSell, b = x => x.strongBuy + x.buy;
     r.buyPct = tot(rec[0]) ? b(rec[0]) / tot(rec[0]) * 100 : null;
@@ -611,7 +723,7 @@ function loadSample(){
   S.mode = 'sample'; setSource();
   const {mkt, rows} = buildSample(); S.mkt = mkt; S.rows = rows.map(r => analyze(r, mkt)); S.updated = new Date();
   renderRegime(); renderRows(); setUpdated();
-  if (!S.rows.find(r => r.sym === S.sel)) S.sel = [...S.rows].sort((a, b) => b.score - a.score)[0]?.sym ?? null;
+  if (!S.rows.find(r => r.sym === S.sel)) S.sel = [...S.rows].sort((a, b) => (b.sigScore ?? -999) - (a.sigScore ?? -999))[0]?.sym ?? null;
   renderTicket();
 }
 
@@ -640,6 +752,7 @@ async function loadServer(){
     if (mv){
       const add = (list, label, n) => list.filter(x => !watch.includes(x) && !movers[x]).slice(0, n).forEach(x => movers[x] = label);
       add(mv.gainers || [], 'Yahoo top gainer', 5); add(mv.losers || [], 'Yahoo top loser', 4); add(mv.actives || [], 'Yahoo most active', 4); add(mv.trending || [], 'Yahoo trending', 4);
+      add(mv.undervalued || [], 'Yahoo undervalued large caps', 4); add(mv.growth || [], 'Yahoo growth tech', 3);
     }
     const syms = [...watch, ...Object.keys(movers)];
     const rows = await api('api/scan?symbols=' + encodeURIComponent(syms.join(',')));
@@ -651,7 +764,7 @@ async function loadServer(){
       return analyze(r, S.mkt);
     });
     S.updated = new Date(); setUpdated(); progress(null); renderRows();
-    if (!S.rows.find(r => r.sym === S.sel)) S.sel = [...S.rows].sort((a, b) => b.score - a.score)[0]?.sym ?? null;
+    if (!S.rows.find(r => r.sym === S.sel)) S.sel = [...S.rows].sort((a, b) => (b.sigScore ?? -999) - (a.sigScore ?? -999))[0]?.sym ?? null;
     renderTicket(); renderSources();
   } catch (e){
     progress(null);
@@ -725,17 +838,18 @@ function visibleRows(){
   return rows.sort((a, b) => { const x = val(a), y = val(b); if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * dir; });
 }
 function renderScans(){
-  $('#scans').innerHTML = SCANS.map(([id, label, f]) => `<button type="button" class="chip" data-scan="${id}" aria-pressed="${S.scan === id}"><b>${esc(label)}</b><span class="n">${S.rows.filter(f).length} stocks</span></button>`).join('');
+  $('#scans').innerHTML = SCANS.map(([id, label, f]) => `<button type="button" class="chip" data-scan="${id}" aria-pressed="${S.scan === id}"><b>${esc(label)}</b><span class="n">${((n) => n + (n === 1 ? ' stock' : ' stocks'))(S.rows.filter(f).length)}</span></button>`).join('');
 }
 function renderRows(){
   renderScans();
   $('#listTitle').textContent = SCANS.find(x => x[0] === S.scan)[1];
   document.querySelectorAll('#grid th').forEach(th => { if (th.dataset.k === S.sort.k) th.setAttribute('aria-sort', S.sort.dir < 0 ? 'descending' : 'ascending'); else th.removeAttribute('aria-sort'); });
   const rows = visibleRows();
-  if (!rows.length){ $('#rows').innerHTML = `<tr><td colspan="18" class="empty">${S.rows.length ? 'No tickers match this scan right now.' : 'Loading tickers…'}</td></tr>`; return; }
+  if (!rows.length){ $('#rows').innerHTML = `<tr><td colspan="19" class="empty">${S.rows.length ? 'No tickers match this scan right now.' : 'Loading tickers…'}</td></tr>`; return; }
   $('#rows').innerHTML = rows.map(r => `
     <tr data-sym="${r.sym}" tabindex="0" aria-selected="${r.sym === S.sel}">
       <td class="l"><div class="sym">${r.sym}<small>${esc(r.name)}</small></div></td>
+      <td>${sigPill(r)}</td>
       <td><span class="grade"><b class="g-${r.grade}">${r.grade}</b>${r.score}</span></td>
       <td class="l"><span class="bias ${r.bias}">${{L:'LONG', S:'SHORT', N:'FLAT'}[r.bias]}</span></td>
       <td>${fmt(r.price)}</td>
@@ -791,6 +905,7 @@ function renderTicket(){
       <div><div class="px num">${fmt(r.price)}</div><div class="num ${cls(r.chgPct)}" style="text-align:right">${pct(r.chgPct)}</div>
       <div style="text-align:right;margin-top:4px"><span class="grade"><b class="g-${r.grade}">${r.grade}</b><span class="num">${r.score}</span></span> <span class="bias ${r.bias}">${{L:'LONG', S:'SHORT', N:'FLAT'}[r.bias]}</span></div></div>
     </div>
+    ${signalBox(r)}
     <div class="why"><span class="av" aria-hidden="true">?</span><div><strong>Why it's on the list.</strong> ${esc(explain(r))}</div></div>
     <div class="chart">${chart(r)}</div>
     <section><h3>Key prices</h3><div class="kv num">
@@ -866,6 +981,25 @@ function extraSections(r){
   return out.join('');
 }
 
+function signalBox(r){
+  const g = r.signal; if (!g) return '';
+  const li = x => `<li>${esc(x.text.charAt(0).toUpperCase() + x.text.slice(1))}.</li>`;
+  const bars = Object.keys(SIG_W).map(k => {
+    const v = g.factors[k];
+    if (v == null) return `<div class="factor"><span>${SIG_LABEL[k]}</span><div class="track"></div><span class="num muted">—</span></div>`;
+    const w = Math.abs(v) * 50, col = v >= 0 ? 'var(--up)' : 'var(--down)';
+    return `<div class="factor" title="${esc(g.pros.concat(g.cons).find(x => x.k === k)?.text || '')}"><span>${SIG_LABEL[k]}</span><div class="track"><i style="background:${col};${v >= 0 ? 'left:50%' : 'right:50%'};width:${w.toFixed(0)}%"></i></div><span class="num ${cls(v)}">${v > 0 ? '+' : ''}${Math.round(v * 100)}</span></div>`;
+  }).join('');
+  return `<section class="signal ${g.code}" aria-label="Signal">
+    <div class="top"><div><span class="label">Signal</span><div class="big">${g.label}</div></div>
+      <div style="text-align:right"><div class="num" style="font-size:18px;font-weight:700">${g.code === 'NA' ? '—' : (g.score > 0 ? '+' : '') + g.score}<span class="muted" style="font-size:12px"> / 100</span></div><div class="fine">${g.conf} confidence · ${Math.round(g.coverage * 100)}% of inputs</div></div></div>
+    ${g.pros.length ? `<div><b style="font-size:13px">In favor</b><ul>${g.pros.slice(0, 4).map(li).join('')}</ul></div>` : ''}
+    ${g.cons.length ? `<div><b style="font-size:13px">Against</b><ul>${g.cons.slice(0, 4).map(li).join('')}</ul></div>` : ''}
+    ${g.notes.length ? `<div class="fine">${g.notes.map(esc).join(' ')}</div>` : ''}
+    <div class="factors">${bars}</div>
+    <div class="fine">Built from public analyst ratings and market data. Not financial advice: check the numbers yourself before you buy or sell.</div>
+  </section>`;
+}
 function explain(r){
   const out = [], P = r.parts, dir = r.bias === 'S' ? 'down' : 'up';
   if (r.chgPct != null) out.push(`${r.sym} is ${r.chgPct >= 0 ? 'up' : 'down'} ${Math.abs(r.chgPct).toFixed(1)}% today, ${Math.abs(r.chgPct - (S.mkt.SPY?.chgPct ?? 0)) < .3 ? 'in line with' : (r.chgPct > (S.mkt.SPY?.chgPct ?? 0) ? 'ahead of' : 'behind')} the S&P 500.`);
@@ -913,7 +1047,7 @@ function select(sym){ S.sel = sym; document.querySelectorAll('#rows tr').forEach
 /* ---------- events ---------- */
 $('#rows').addEventListener('click', e => { const tr = e.target.closest('tr[data-sym]'); if (tr) select(tr.dataset.sym); });
 $('#rows').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ const tr = e.target.closest('tr[data-sym]'); if (tr){ e.preventDefault(); select(tr.dataset.sym); } } });
-$('#scans').addEventListener('click', e => { const b = e.target.closest('[data-scan]'); if (b){ S.scan = b.dataset.scan; store.set('scan', S.scan); renderRows(); } });
+$('#scans').addEventListener('click', e => { const b = e.target.closest('[data-scan]'); if (b){ S.scan = b.dataset.scan; store.set('scan', S.scan); if (/buy|sell/.test(S.scan)) S.sort = {k: 'sigScore', dir: S.scan === 'sell' ? 1 : -1}; renderRows(); } });
 $('#biasFilter').addEventListener('change', e => { S.bias = e.target.value; renderRows(); });
 $('#q').addEventListener('input', e => { S.q = e.target.value; renderRows(); });
 document.querySelector('#grid thead').addEventListener('click', e => {

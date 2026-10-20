@@ -143,12 +143,13 @@ const yNews = sym => memo('yn:' + sym, 10 * MIN, async () =>
 export const yMovers = () => memo('ymov', 2 * MIN, async () => {
   const screen = async id => ((await settle(yget(`https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=${id}&count=15`)))
     ?.finance?.result?.[0]?.quotes || []).map(q => q.symbol);
-  const [gainers, losers, actives, trend] = await Promise.all([
+  const [gainers, losers, actives, trend, undervalued, growth] = await Promise.all([
     screen('day_gainers'), screen('day_losers'), screen('most_actives'),
-    settle(yget('https://query1.finance.yahoo.com/v1/finance/trending/US?count=15'))
+    settle(yget('https://query1.finance.yahoo.com/v1/finance/trending/US?count=15')),
+    screen('undervalued_large_caps'), screen('growth_technology_stocks')
   ]);
   const trending = (trend?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(s => /^[A-Z.\-]{1,6}$/.test(s));
-  return { gainers, losers, actives, trending };
+  return { gainers, losers, actives, trending, undervalued, growth };
 });
 
 export function parseOptions(chain, price) {
@@ -185,14 +186,18 @@ export function parseSummary(s) {
     instPct: num(mh.institutionsPercentHeld) != null ? num(mh.institutionsPercentHeld) * 100 : num(ks.heldPercentInstitutions) != null ? num(ks.heldPercentInstitutions) * 100 : null,
     insiderPct: num(mh.insidersPercentHeld) != null ? num(mh.insidersPercentHeld) * 100 : null,
     instCount: num(mh.institutionsCount),
-    target: num(fd.targetMeanPrice) ? { mean: num(fd.targetMeanPrice), high: num(fd.targetHighPrice), low: num(fd.targetLowPrice), n: num(fd.numberOfAnalystOpinions), key: fd.recommendationKey || null } : null
+    target: num(fd.targetMeanPrice) ? { mean: num(fd.targetMeanPrice), high: num(fd.targetHighPrice), low: num(fd.targetLowPrice), n: num(fd.numberOfAnalystOpinions), key: fd.recommendationKey || null } : null,
+    recMean: num(fd.recommendationMean), // 1 = strong buy … 5 = strong sell
+    revenueGrowth: num(fd.revenueGrowth), earningsGrowth: num(fd.earningsGrowth), profitMargin: num(fd.profitMargins)
   };
   const tr = s.recommendationTrend?.trend || [];
   const t0 = tr.find(x => x.period === '0m'), t1 = tr.find(x => x.period === '-1m');
   const tot = x => x.strongBuy + x.buy + x.hold + x.sell + x.strongSell, b = x => x.strongBuy + x.buy;
   if (t0 && tot(t0)) { out.buyPct = b(t0) / tot(t0) * 100; out.analysts = tot(t0); out.anaDelta = t1 ? b(t0) - b(t1) : 0; }
   const since = Date.now() / 1000 - 30 * 86400;
-  out.upgrades = (s.upgradeDowngradeHistory?.history || []).filter(h => h.epochGradeDate >= since).slice(0, 8)
+  const recent = (s.upgradeDowngradeHistory?.history || []).filter(h => h.epochGradeDate >= since);
+  out.ups30 = recent.filter(h => h.action === 'up').length; out.downs30 = recent.filter(h => h.action === 'down').length;
+  out.upgrades = recent.slice(0, 8)
     .map(h => ({ date: ymd(new Date(h.epochGradeDate * 1000)), firm: h.firm, from: h.fromGrade || '', to: h.toGrade || '', action: h.action }));
   out.holders = (s.institutionOwnership?.ownershipList || []).slice(0, 5)
     .map(h => ({ org: h.organization, pct: num(h.pctHeld) != null ? num(h.pctHeld) * 100 : null, chg: num(h.pctChange) != null ? num(h.pctChange) * 100 : null, date: h.reportDate?.fmt || null }));
@@ -284,6 +289,11 @@ const fhMspr = sym => !FINNHUB_KEY ? Promise.resolve(null) : memo('fh:' + sym, 1
   const j = await lim.other(() => get(`https://finnhub.io/api/v1/stock/insider-sentiment?symbol=${sym}&from=${ymd(from)}&to=${ymd(now)}&token=${FINNHUB_KEY}`, { src: 'finnhub' }));
   const d = (j?.data || []).slice(-3); return d.length ? d.reduce((a, x) => a + (x.mspr || 0), 0) / d.length : null;
 });
+const fhRec = sym => !FINNHUB_KEY ? Promise.resolve(null) : memo('fhr:' + sym, 12 * HOUR, async () => {
+  const j = await lim.other(() => get(`https://finnhub.io/api/v1/stock/recommendation?symbol=${sym}&token=${FINNHUB_KEY}`, { src: 'finnhub' }));
+  const x = j?.[0], tot = x ? x.strongBuy + x.buy + x.hold + x.sell + x.strongSell : 0;
+  return tot ? { buyPct: (x.strongBuy + x.buy) / tot * 100, n: tot } : null;
+});
 const fhNews = sym => !FINNHUB_KEY ? Promise.resolve([]) : memo('fhn:' + sym, 10 * MIN, async () => {
   const now = new Date();
   const j = await lim.other(() => get(`https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${ymd(new Date(now - 4 * 864e5))}&to=${ymd(now)}&token=${FINNHUB_KEY}`, { src: 'finnhub' }));
@@ -293,9 +303,10 @@ const fhNews = sym => !FINNHUB_KEY ? Promise.resolve([]) : memo('fhn:' + sym, 10
 /* ---------- assemble ---------- */
 export async function buildRow(sym, q, shortMap) {
   if (!q || q.regularMarketPrice == null) return null;
-  const [daily, intra, summary, chain, filings, st, fhm, gf, gn] = await Promise.all([
+  const [daily, intra, summary, chain, filings, st, fhm, gf, gn, fhr] = await Promise.all([
     settle(yDaily(sym)), settle(yIntraday(sym)), settle(ySummary(sym)), settle(yOptions(sym)),
-    settle(secFilings(sym)), settle(social(sym)), settle(fhMspr(sym)), settle(gFinance(sym, q.exchange)), settle(gNews(sym, q.longName || q.shortName))
+    settle(secFilings(sym)), settle(social(sym)), settle(fhMspr(sym)), settle(gFinance(sym, q.exchange)), settle(gNews(sym, q.longName || q.shortName)),
+    settle(fhRec(sym))
   ]);
   const pre = ['PRE', 'PREPRE'].includes(q.marketState) && q.preMarketPrice;
   const r = {
@@ -323,7 +334,9 @@ export async function buildRow(sym, q, shortMap) {
   Object.assign(r, intra ? { vwap: intra.vwap, preHigh: intra.preHigh, preLow: intra.preLow, orHigh: intra.orHigh, orLow: intra.orLow, intraday: intra.path } : {});
   const s = parseSummary(summary);
   Object.assign(r, s, { industry: s.industry || s.sector || q.quoteType || '—' });
+  r.recMean ??= parseFloat(q.averageAnalystRating) || null; // quote fallback, e.g. "1.8 - Buy"
   if (fhm != null) r.mspr = fhm;
+  if (fhr) { r.fhBuyPct = fhr.buyPct; r.fhAnalysts = fhr.n; }
   r.options = parseOptions(chain, r.price);
   r.finraShort = shortMap?.[sym] || null;
   r.social = st; r.sec = filings; r.google = gf;
