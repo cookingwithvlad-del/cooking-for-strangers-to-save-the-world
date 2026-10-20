@@ -12,6 +12,9 @@ window.Assets3D = {
     for (const k of ["sedan", "sports", "van", "foodtruck", "bus", "taxi", "police", "rental", "scooter"]) glb("assets/3d/vehicles/" + k + ".glb", p => { this.vehicles[k] = p; });
     glb("assets/3d/person.glb", p => { this.person = p; });
     glb("assets/3d/props.glb", p => { this.props = this.groupProps(p); });
+    glb("assets/3d/head.glb", p => { this.head = p.head || Object.values(p)[0]; });
+    for (const id of ["vlad", "orly", "alex", "anthony", "jeanphil"]) jobs.push(new Promise(res => texl.load(this.src("assets/3d/faces/" + id + ".jpg"), t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; t.flipY = false; this.faces[id] = t; res(); }, undefined, () => res())));
+    glb("assets/3d/hero.glb", p => { this.hero = {}; for (const [name, g] of Object.entries(p)) { const base = name.replace(/[._]?\d+$/, ""); (this.hero[base] = this.hero[base] || []).push(g); } });
     const facades = [["facade", "facade"], ["facadeGlass", "facade_glass"], ["facadeStucco", "facade_stucco"], ["facadeConcrete", "facade_concrete"]];
     const list = [];
     for (const [k, f] of facades) list.push([k + "Color", f + "_color.jpg"], [k + "Normal", f + "_normal.jpg", true], [k + "Emissive", f + "_emissive.jpg"], [k + "Rough", f + "_rough.jpg", true]);
@@ -28,7 +31,7 @@ window.Assets3D = {
     scene.traverse(o => {
       if (!o.isMesh) return;
       const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld);
-      for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal") g.deleteAttribute(k);
+      for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal" && k !== "uv") g.deleteAttribute(k);
       if (!g.attributes.normal) g.computeVertexNormals();
       out[o.name] = g;
     });
