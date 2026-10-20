@@ -1,5 +1,6 @@
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
 class UI {
   constructor() {
     this.$ = id => document.getElementById(id);
@@ -28,6 +29,7 @@ class UI {
       case "buy": g.buy(ds.item); break;
       case "buyneeded": g.buyNeeded(ds.kind); break;
       case "cookep": g.startEpisodeCook(); break;
+      case "replay": g.replayEpisode(+ds.i); break;
       case "plate": g.startPlate(ds.plate); break;
       case "tap": g.cookTap(); break;
       case "sign": g.signChoice(ds.right === "1"); break;
@@ -36,7 +38,7 @@ class UI {
       case "journal": g.openJournal(); break;
       case "map": g.openMap(); break;
       case "phone": g.openPhone(ds.tab); break;
-      case "graphics": g.saveGame(false); try { localStorage.setItem("cfs-2d", g.is3d ? "1" : "0"); } catch (e) {} location.reload(); break;
+      case "graphics": g.saveGame(false); try { localStorage.setItem("cfs-2d", g.is3d ? "1" : "0"); } catch { /* storage unavailable */ } location.reload(); break;
       case "buycar": g.buyVehicle(ds.kind); break;
       case "station": g.setRadio(+ds.i); break;
       case "radiotoggle": g.toggleRadio(); break;
@@ -172,7 +174,7 @@ class UI {
       <p class="muted">${next}</p>
       <button class="primary" data-act="close">Let's go</button>`;
   }
-  cookHtml(g, title, cook) {
+  cookHtml(title) {
     return `<div class="cook-head"><img class="chef-photo" src="assets/chef-kitchen.jpg" alt="Vlad in the kitchen" onerror="this.style.display='none'">
       <div><h2>${esc(title)}</h2><p class="muted">Vlad's on the pans. Orly's setting the table. Stop the marker in the green.</p></div></div>
       <div class="cook-dish" id="cook-dish"></div>
@@ -200,11 +202,18 @@ class UI {
       const st = g.done.has(ep.id) ? "done" : i === g.episodeIdx ? "now" : g.unlocked.has(ep.city) ? "" : "locked";
       const mark = st === "done" ? "✔" : st === "now" ? "▶" : st === "locked" ? "🔒" : "·";
       const dishes = st === "locked" ? "" : (ep.dishes || ["(no recipe — a visit)"]).join(" · ");
-      return `<tr class="${st}"><td>${mark}</td><td>${ep.n}</td><td><b>${esc(ep.name)}</b><br><small>${esc(ep.place)}</small></td><td><small>${esc(dishes)}</small></td><td>${ep.covers}</td></tr>`;
+      let stars = "";
+      if (st === "done" && isCookedTable(ep)) {
+        const best = g.best[ep.id];
+        const n = best != null ? starsFor(best) : 0;
+        stars = `<span class="stars" title="${n ? "Best: " + n + " of 3" : "Not rated yet — cook it again"}">${"★".repeat(n)}${"☆".repeat(3 - n)}</span>`
+          + `<button class="replay" data-act="replay" data-i="${i}" title="Cook this menu again for a better score">↻ Again</button>`;
+      }
+      return `<tr class="${st}"><td>${mark}</td><td>${ep.n}</td><td><b>${esc(ep.name)}</b><br><small>${esc(ep.place)}</small></td><td><small>${esc(dishes)}</small></td><td>${ep.covers}</td><td class="best">${stars}</td></tr>`;
     }).join("");
     return `<h2>📖 The Book</h2>
-      <p class="muted">${g.done.size} of ${EPISODES.length} tables · ${g.fed.toLocaleString()} strangers fed · $${Math.round(g.stats.earned)} earned · ${g.stats.perfect} perfect services</p>
-      <div class="scroll tall"><table class="journal"><tr><th></th><th>#</th><th>Table</th><th>Menu</th><th>Covers</th></tr>${rows}</table></div>
+      <p class="muted">${g.done.size} of ${EPISODES.length} tables · ${g.fed.toLocaleString()} strangers fed · $${Math.round(g.stats.earned)} earned · ${g.stats.perfect} perfect services · ★ ${g.totalStars()} of ${MAX_STARS}</p>
+      <div class="scroll tall"><table class="journal"><tr><th></th><th>#</th><th>Table</th><th>Menu</th><th>Covers</th><th>Best</th></tr>${rows}</table></div>
       <button data-act="close">Close</button>`;
   }
   phoneHtml(g, tab) {
@@ -240,6 +249,7 @@ class UI {
         <tr><td>Tables served</td><td>${g.done.size} of ${EPISODES.length}</td></tr>
         <tr><td>Plates handed out on the street</td><td>${s.fed_street}</td></tr>
         <tr><td>Perfect services</td><td>${s.perfect}</td></tr>
+        <tr><td>Stars earned</td><td>★ ${g.totalStars()} of ${MAX_STARS}</td></tr>
         <tr><td>Cash earned</td><td>$${Math.round(s.earned)}</td></tr>
         <tr><td>Taxi fares</td><td>${s.fares}</td></tr>
         <tr><td>Cars borrowed without asking</td><td>${s.carjacks}</td></tr>
@@ -263,7 +273,7 @@ class UI {
     return `<div class="ep-kicker">AFTERWORD</div><h2>Sixty-eight tables. Four cities. One year.</h2>
       <div class="win-photo"><img src="assets/cooks-selfie.jpg" alt="Vlad and Orly"><div class="hero-cap">Vlad &amp; Orly — @chef_briantsev · @chefonthehouse</div></div>
       <p class="hook">You fed ${g.fed.toLocaleString()} strangers and cooked ${g.done.size} tables. Nobody paid you to do it. That was the whole point.</p>
-      <p>Cash on hand: $${Math.round(g.cash)} · Earned: $${Math.round(g.stats.earned)} · Perfect services: ${g.stats.perfect} · Busted: ${g.stats.busted} times · Pedestrians splashed: ${g.stats.splashed} · Playtime: ${mins} min</p>
+      <p>Cash on hand: $${Math.round(g.cash)} · Earned: $${Math.round(g.stats.earned)} · Perfect services: ${g.stats.perfect} · Stars: ${g.totalStars()} of ${MAX_STARS} · Busted: ${g.stats.busted} times · Pedestrians splashed: ${g.stats.splashed} · Playtime: ${mins} min</p>
       <p class="muted">The city is still hungry. The streets stay open — keep feeding people.</p>
       <div class="btns"><button class="primary" data-act="close">Keep playing</button><button data-act="restart">New run</button></div>`;
   }

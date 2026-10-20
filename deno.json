@@ -1,0 +1,8 @@
+{
+  "lint": {
+    "exclude": ["js/vendor/", "tools/"],
+    "rules": {
+      "exclude": ["no-window"]
+    }
+  }
+}

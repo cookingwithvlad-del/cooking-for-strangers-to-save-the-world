@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-unused-vars -- everything here is read by the other <script> files
 // Pedestrians: who they are and what they say when you stop them.
 
 const FIRST_NAMES = ["Marisol", "Dev", "Tasha", "Yusuf", "Priya", "Marcus", "Elena", "Jonah", "Keiko", "Andre", "Sofia", "Malik", "Hannah", "Diego", "Noor", "Tommy", "Ingrid", "Sam", "Lucía", "Omar", "Rivka", "Chen", "Grace", "Kwame", "Bea", "Luis", "Aliyah", "Petra", "Nate", "Yara", "Dante", "Mei", "Ruth", "Felix", "Imani", "Sergio", "Talia", "Boris", "Nadia", "Jules"];
