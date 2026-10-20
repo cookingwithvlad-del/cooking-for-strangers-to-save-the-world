@@ -1,7 +1,7 @@
 // Loads the Blender-built assets (assets/3d/*) for the 3D renderer. Everything is optional:
 // whatever fails to load, the renderer keeps its primitive fallback for.
 window.Assets3D = {
-  ready: false, vehicles: {}, person: null, props: {}, tex: {}, sky: {},
+  ready: false, vehicles: {}, person: null, props: {}, hero: null, head: null, faces: {}, tex: {}, sky: {},
   src(path) { return (window.ASSET_DATA && window.ASSET_DATA[path]) || path; },
   load(onDone) {
     if (!window.THREE || !THREE.GLTFLoader) { onDone && onDone(this); return; }
