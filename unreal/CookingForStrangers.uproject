@@ -1,0 +1,14 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "Game",
+	"Description": "Cooking for Strangers to Save the World - the four cities, characters and cars from the browser game, rebuilt in Unreal by Content/Python/cfs_build.py.",
+	"Plugins": [
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "EditorScriptingUtilities", "Enabled": true },
+		{ "Name": "Interchange", "Enabled": true, "Optional": true },
+		{ "Name": "InterchangeEditor", "Enabled": true, "Optional": true },
+		{ "Name": "ModelContextProtocol", "Enabled": true, "Optional": true },
+		{ "Name": "AllToolsets", "Enabled": true, "Optional": true }
+	]
+}

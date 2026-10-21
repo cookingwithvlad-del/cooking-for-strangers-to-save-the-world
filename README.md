@@ -31,6 +31,30 @@ bpyenv/bin/python tools/blender_assets.py vehicles   # or one stage: vehicles pe
 
 A sun that moves across a shaded sky dome through sunrise, noon, dusk and night; ACES filmic tone mapping; humid haze that's thicker in Florida and LA and in the rain; procedural textures for asphalt, concrete, grass, sand, water and building facades whose windows glow at night; storefront glass, awnings and neon signs at street level; traffic lights that cycle; palms in the southern cities; wet roads that pick up headlight and streetlight reflections when it rains; real shadows on desktop.
 
+## Unreal Engine
+
+The browser game is the game; `unreal/` is the same world handed to Unreal Engine 5 so it can be walked, lit and built on with Nanite, Lumen and a real character controller. Nothing in this repo needs the engine to be installed to run the browser version.
+
+**Connect Claude Code to a running editor.** The project turns on Unreal's built-in Python remote execution (`unreal/Config/DefaultEngine.ini`), so an editor with this project open can be driven from outside without compiling a plugin:
+
+```
+python3 tools/unreal_bridge.py ping          # which editors are listening
+python3 tools/unreal_bridge.py build         # import the models and build the Four Cities level
+python3 tools/unreal_bridge.py exec "unreal.log('hello from the terminal')"
+```
+
+`.mcp.json` registers the open-source [UEMCP](https://pypi.org/project/uemcp/) server (speaks the same protocol, installs with `uvx`), so Claude Code opened in this folder on the machine running the editor gets Unreal tools automatically. Epic's own [Unreal Engine skills for Claude Code](https://github.com/EpicGames/unreal-engine-skills-for-claude-code-plugin) plugin is the heavier alternative: it needs the ModelContextProtocol and AllToolsets engine plugins (listed as optional in the `.uproject`) and exposes hundreds of editor tools.
+
+**Build the world.** Open `unreal/CookingForStrangers.uproject` (UE 5.3 or newer) and pick Tools > Cooking for Strangers > Build Four Cities, or run `import cfs_build; cfs_build.run()` in the Python console, or use the bridge above. `Content/Python/cfs_build.py` then:
+
+1. imports the models from `unreal/SourceAssets` (the game's glb files with node transforms baked in by `tools/bake_glb.py`, so each becomes a clean StaticMesh), the Cycles-baked textures and the five photo faces;
+2. builds materials: world-aligned facades per style with lit windows, ground materials, a tint material with one instance per colour, and a face material per character;
+3. creates `Maps/FourCities`, lights it (sun, sky atmosphere, sky light, haze), and lays out the city from `Content/Data/world.json` (written by `node tools/export_world.js`): roads, sidewalks, rivers and bridges, beaches, parks, every building with its block's facade style, height and tint, storefronts, 1,400 street props, 64 parked cars, Vlad, Orly, Alex, Anthony and Jean Phil assembled from their parts with their real faces, a text marker at all 68 tables, target points at the shops and home kitchens, and a PlayerStart at the New York kitchen.
+
+Scale is 10 cm per game unit: a block tile is 3.2 m, a sedan 3.3 m, the characters about 1.8 m. Drop in the Third Person template and you can walk the four cities. The mission logic, traffic, police and cooking live in `js/game.js` and would be a Blueprint port; `world.json` carries everything they'd need (episode spots, shops, homes, parking).
+
+The build script was written against the UE 5.3 to 5.6 Python API without an editor at hand: every phase is wrapped so a renamed property costs one phase, not the build, and the Output Log says which. It has been exercised end to end against a stand-in `unreal` module and the bridge against a fake editor; the first real run may need a property name or two adjusted.
+
 ## Play
 
 Open `index.html` in a browser, or serve the folder:
@@ -106,6 +130,11 @@ js/assets3d.js    loads the Blender-built models and textures (optional; primiti
 js/render.js      2D canvas fallback renderer, minimap, full map
 js/vendor/        three.min.js r128 + GLTFLoader (MIT)
 tools/blender_assets.py   headless Blender pipeline that builds assets/3d
+tools/export_world.js     writes the procedural world as JSON for other engines (unreal/Content/Data/world.json)
+tools/bake_glb.py         bakes node transforms into the glb models for per-mesh importers
+tools/unreal_bridge.py    runs Python inside a live Unreal Editor over remote execution
+unreal/                   Unreal Engine 5 project: Content/Python/cfs_build.py rebuilds the world from the data above
+.mcp.json                 Claude Code MCP config: the UEMCP server that connects to the editor
 assets/3d/        models (glb), baked textures, sky environments
 js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
 js/game.js        game state, mission flow, heat/police, save/load
