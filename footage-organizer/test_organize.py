@@ -110,6 +110,12 @@ class UnitTests(unittest.TestCase):
         self.assertEqual((x["make"], x["model"], x["original"], x["width"]), ("Canon", "EOS R5", "2021:03:04 05:06:07", 6000))
         shutil.rmtree(d)
 
+    def test_copy_names(self):
+        for n in ("IMG_0001 copy.JPG", "IMG_0001 (1).JPG", "IMG_0001 2.JPG", "clip - Copy.mp4"):
+            self.assertTrue(org.COPY_NAME_RE.search(n), n)
+        for n in ("IMG_0001.JPG", "GX010007.MP4", "DJI_0042.MP4", "C0001.MP4"):
+            self.assertFalse(org.COPY_NAME_RE.search(n), n)
+
     def test_label_hint(self):
         self.assertEqual(org.label_hint("/Volumes/CARD", "DCIM/100GOPRO/GX010001.MP4"), None)
         self.assertEqual(org.label_hint("/x", "2024-05-12 Miami Beach/DCIM/100GOPRO/a.mp4"), "Miami Beach")
@@ -209,6 +215,37 @@ class EndToEnd(unittest.TestCase):
                       self.files(self.dest))
         org.undo(log, progress=quiet)
         self.assertTrue(os.path.exists(self.card + "/DCIM/100GOPRO/GX010007.MP4"))
+
+    def test_in_place_and_remove_duplicates(self):
+        quiet = lambda *a: None
+        both = os.path.join(self.tmp, "WD Drive")
+        shutil.move(self.card, os.path.join(both, "Miami Beach"))
+        shutil.move(self.card2, os.path.join(both, "NO NAME"))
+        org.main(["scan", both, "--in-place"])
+        planfile = os.path.join(both, "Organized", org.WORKDIR, "plan.json")
+        org.apply_plan(planfile, progress=quiet)
+        lib = self.files(os.path.join(both, "Organized"))
+        self.assertIn("2024/2024-05-12_Miami-Beach/Video/2024-05-12_143000_Miami-Beach_V001-pt1_GoPro.mp4", lib)
+        dup = [f for f in lib if f.startswith("_Duplicates/")]
+        self.assertEqual(len(dup), 1, lib)
+        # moved-out folders are gone; non-media files stay where they were
+        self.assertFalse(os.path.exists(os.path.join(both, "Miami Beach", "DCIM", "100GOPRO", "GX010007.MP4")))
+        self.assertTrue(os.path.exists(os.path.join(both, "NO NAME", "notes.txt")))
+        self.assertEqual(org.remove_duplicates(planfile, yes=True, progress=quiet), 1)
+        lib = self.files(os.path.join(both, "Organized"))
+        self.assertFalse(any(f.startswith("_Duplicates/") and not f.endswith("/") for f in lib), lib)
+        self.assertIn("2024/2024-05-12_Miami-Beach/Photos/2024-05-12_143500_Miami-Beach_P001_Canon.jpg", lib)
+        self.assertEqual(org.remove_duplicates(planfile, yes=True, progress=quiet), 0)
+
+    def test_remove_duplicates_from_source_after_copy(self):
+        quiet = lambda *a: None
+        planfile = org.do_scan([self.card, self.card2], self.dest, Opts(), progress=quiet)
+        org.apply_plan(planfile, progress=quiet)
+        copy_path = self.card2 + "/backup/IMG_0001 copy.JPG"
+        self.assertTrue(os.path.exists(copy_path))
+        self.assertEqual(org.remove_duplicates(planfile, yes=True, progress=quiet), 1)
+        self.assertFalse(os.path.exists(copy_path))
+        self.assertTrue(os.path.exists(self.card + "/DCIM/100CANON/IMG_0001.JPG"))
 
 
 if __name__ == "__main__":

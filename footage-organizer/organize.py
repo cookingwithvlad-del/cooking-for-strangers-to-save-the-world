@@ -517,7 +517,8 @@ def file_hash(path, quick=False):
     return h.hexdigest()
 
 
-COPY_NAME_RE = re.compile(r"(\bcopy\b|kopie|copie|\(\d+\)|-\d+$|_\d+\.\w+$)", re.I)
+# "IMG_0001 copy.JPG", "IMG_0001 (1).JPG", "IMG_0001 2.JPG" (Finder/Explorer duplicates)
+COPY_NAME_RE = re.compile(r"(\bcopy\b|kopie|copie|\(\d+\)|\s\d+\.\w+$)", re.I)
 
 
 def find_duplicates(items, progress):
@@ -788,11 +789,15 @@ def write_outputs(items, sessions, dest, opts, sources):
         if it.status == "duplicate" and not opts.move:
             continue  # copying duplicates just wastes space; they're listed in the catalog
         ops.append({"src": it.src, "dst": it.dst, "size": it.size, "status": it.status, "hash": it.hash})
+    # Every duplicate and the copy that is kept instead, for remove-duplicates.
+    dups = [{"src": it.src, "dst": it.dst if opts.move else None, "size": it.size, "hash": it.hash,
+             "keep_src": it.parent.src, "keep_dst": it.parent.dst}
+            for it in items if it.status == "duplicate" and it.parent]
     planfile = os.path.join(wd, "plan.json")
     with open(planfile, "w", encoding="utf-8") as f:
         json.dump({"version": VERSION, "created": dt.datetime.now().isoformat(timespec="seconds"),
                    "sources": sources, "dest": dest, "mode": "move" if opts.move else "copy",
-                   "sessions": sessions, "operations": ops}, f, indent=1)
+                   "sessions": sessions, "operations": ops, "duplicates": dups}, f, indent=1)
     with open(os.path.join(wd, "catalog.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["status", "session", "new_name", "destination", "source", "kind", "captured",
@@ -922,9 +927,61 @@ def apply_plan(planfile, move=None, progress=print):
             if n % 25 == 0 or n == total:
                 rate = moved_bytes / max(0.001, time.time() - t0)
                 progress("  %d / %d files  (%s, %s/s)" % (n, total, human(moved_bytes), human(rate)))
+    if move:  # tidy away the folders the moves emptied (never the scanned folder itself)
+        roots = {os.path.normcase(os.path.abspath(r)) for r in p.get("sources", [])}
+        for d in sorted({os.path.dirname(o["src"]) for o in ops}, key=len, reverse=True):
+            while (os.path.isdir(d) and os.path.normcase(os.path.abspath(d)) not in roots
+                   and not os.listdir(d)):
+                os.rmdir(d)
+                d = os.path.dirname(d)
     progress("Done: %d %s, %d already in place, %d failed. Log: %s" % (
         done, "moved" if move else "copied", skipped, failed, logfile))
     return logfile, failed
+
+
+def remove_duplicates(planfile, yes=False, progress=print):
+    """Deletes duplicates, each only after re-checking that the copy being kept still
+    exists and has exactly the same content. Run after apply (or after scan, to clean
+    the source drive without importing)."""
+    with open(planfile, encoding="utf-8") as f:
+        p = json.load(f)
+    todo = []
+    for d in p.get("duplicates", []):
+        dup = next((x for x in (d.get("dst"), d["src"]) if x and os.path.isfile(x)), None)
+        keep = next((x for x in (d.get("keep_dst"), d["keep_src"]) if x and os.path.isfile(x)), None)
+        if dup and keep and os.path.normcase(os.path.abspath(dup)) != os.path.normcase(os.path.abspath(keep)):
+            todo.append((dup, keep, d["size"]))
+    if not todo:
+        progress("No duplicates left to remove.")
+        return 0
+    total = sum(t[2] for t in todo)
+    progress("%d duplicate files, %s. Each is checked byte-for-byte against the copy that stays." % (len(todo), human(total)))
+    for dup, keep, _ in todo[:10]:
+        progress("  delete %s\n    keeps %s" % (dup, keep))
+    if len(todo) > 10:
+        progress("  ... full list in catalog.csv (status 'duplicate')")
+    if not yes and (input("Type DELETE to remove them: ").strip() != "DELETE"):
+        progress("Nothing deleted.")
+        return 0
+    logfile = os.path.join(os.path.dirname(planfile), "deleted-%s.jsonl" % dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    removed = freed = 0
+    with open(logfile, "a", encoding="utf-8") as log:
+        for dup, keep, size in todo:
+            try:
+                if os.path.getsize(dup) != os.path.getsize(keep) or file_hash(dup) != file_hash(keep):
+                    progress("  ! kept: %s (no longer identical to %s)" % (dup, keep))
+                    continue
+                os.remove(dup)
+                removed, freed = removed + 1, freed + size
+                log.write(json.dumps({"deleted": dup, "identical_to": keep}) + "\n")
+                d = os.path.dirname(dup)
+                while d and os.path.isdir(d) and not os.listdir(d) and os.path.basename(d) != "_Duplicates":
+                    os.rmdir(d)
+                    d = os.path.dirname(d)
+            except OSError as ex:
+                progress("  ! %s: %s" % (dup, ex))
+    progress("Removed %d duplicates, freed %s. Log: %s" % (removed, human(freed), logfile))
+    return removed
 
 
 def undo(logfile, progress=print):
@@ -1010,16 +1067,22 @@ def guided(opts):
             sources.append(os.path.expanduser(tok))
     if not sources:
         raise SystemExit("Nothing selected.")
-    dest = ask("Where should the organized library go? (a folder path, ideally on a drive with room)")
-    if not dest:
-        raise SystemExit("No destination given.")
-    dest = os.path.expanduser(dest.strip('"').strip("'"))
+    dest = ask("Where should the organized library go? A folder path, or Enter to reorganize the drive itself "
+               "(files are moved into an 'Organized' folder on it - fast, needs no extra space)")
+    if dest:
+        dest = os.path.expanduser(dest.strip('"').strip("'"))
+        opts.move = (ask("Copy (keep originals) or move? c/m", "c") or "c").lower().startswith("m")
+    else:
+        if len(sources) != 1:
+            raise SystemExit("Reorganizing in place works on one drive at a time.")
+        dest, opts.move = os.path.join(sources[0], "Organized"), True
     opts.label = ask("Name for these shoots (Enter = name each session from its folder names)", None)
-    opts.move = (ask("Copy (keep originals) or move? c/m", "c") or "c").lower().startswith("m")
     planfile = do_scan(sources, dest, opts)
     print("\nOpen the report to check it: " + os.path.join(dest, WORKDIR, "report.html"))
     if (ask("Go ahead and %s the files now? y/n" % ("move" if opts.move else "copy"), "n") or "n").lower().startswith("y"):
         apply_plan(planfile, opts.move)
+        if (ask("Delete the duplicates now? Each is checked against the copy that stays. y/n", "n") or "n").lower().startswith("y"):
+            remove_duplicates(planfile)
     else:
         print("Nothing changed. Run later with:  python3 organize.py apply \"%s\"" % planfile)
 
@@ -1031,13 +1094,18 @@ def main(argv=None):
     sc = sub.add_parser("scan", help="scan sources and write a plan (changes nothing)")
     sc.add_argument("sources", nargs="*", help="drives or folders to scan")
     sc.add_argument("--all-drives", action="store_true", help="scan every connected external drive")
-    sc.add_argument("--dest", required=True, help="where the organized library goes")
+    sc.add_argument("--dest", help="where the organized library goes")
+    sc.add_argument("--in-place", action="store_true",
+                    help="reorganize the (single) source drive itself: moves files into SOURCE/Organized")
     sc.add_argument("--move", action="store_true", help="plan a move instead of a copy")
     ap_ = sub.add_parser("apply", help="carry out a plan")
     ap_.add_argument("plan")
     g = ap_.add_mutually_exclusive_group()
     g.add_argument("--move", dest="move", action="store_true", default=None)
     g.add_argument("--copy", dest="move", action="store_false")
+    rd = sub.add_parser("remove-duplicates", help="delete duplicates listed in a plan, after re-verifying each")
+    rd.add_argument("plan")
+    rd.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     un = sub.add_parser("undo", help="reverse an apply using its log file")
     un.add_argument("log")
     for p in (sc, ap):
@@ -1067,6 +1135,12 @@ def main(argv=None):
         return
     if opts.cmd == "scan":
         sources = list(opts.sources)
+        if opts.in_place:
+            if len(sources) != 1:
+                raise SystemExit("--in-place takes exactly one drive or folder.")
+            opts.dest, opts.move = opts.dest or os.path.join(sources[0], "Organized"), True
+        if not opts.dest:
+            raise SystemExit("Give --dest (where the library goes) or --in-place.")
         if opts.all_drives:
             sources += [d["path"] for d in list_drives() if d["name"] != "Home folder"
                         and not os.path.abspath(opts.dest).startswith(os.path.abspath(d["path"]))]
@@ -1076,6 +1150,8 @@ def main(argv=None):
     elif opts.cmd == "apply":
         _, failed = apply_plan(opts.plan, opts.move)
         sys.exit(1 if failed else 0)
+    elif opts.cmd == "remove-duplicates":
+        remove_duplicates(opts.plan, opts.yes)
     elif opts.cmd == "undo":
         undo(opts.log)
 

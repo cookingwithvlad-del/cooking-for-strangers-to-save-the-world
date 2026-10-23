@@ -6,6 +6,7 @@ Imports, sorts, groups and renames the video, photo and audio on your hard drive
 - **By session:** footage recorded close together becomes one shoot. A gap of more than 90 minutes, or a new day, starts a new session.
 - **In sequence:** clips are numbered in the order they were shot. Long recordings that the camera split into several files (GoPro chapters and similar) keep one take number, with `-pt1`, `-pt2` and so on.
 - **By relevance:** camera originals go into the session folders. Accidental 1-second clips, thumbnails and screen recordings go to `_Review`. Edited exports go to `_Exports`, and duplicates are listed but never copied twice. System junk such as `.DS_Store` and `._` files is skipped.
+- **Duplicates removed:** identical files are found by content, not just by name. `remove-duplicates` deletes them, but first re-checks each one byte-for-byte against the copy that stays.
 - **Safely:** nothing changes until you approve the plan. Copy mode (the default) never touches the originals. Every copy is checked against its original before it counts, and if an import is interrupted, running it again resumes where it stopped. `undo` reverses an import.
 
 ```
@@ -49,7 +50,7 @@ Without them the tool still reads EXIF from JPEG and raw photos, dates in file n
 3. what to call the shoots
 4. whether to copy or move
 
-It then shows the plan before anything is copied.
+It then shows the plan before anything is copied. Press Enter at the destination question to reorganize the drive itself: files are moved into an `Organized` folder on the same drive, which is instant and needs no extra space. After the import it offers to delete the duplicates.
 
 **From a terminal:**
 
@@ -66,7 +67,14 @@ python3 organize.py scan --all-drives --dest "D:\Organized"      # every externa
 python3 organize.py apply "/Volumes/Archive/Organized/_organizer/plan.json"          # copy
 python3 organize.py apply "/Volumes/Archive/Organized/_organizer/plan.json" --move   # move
 
-# Changed your mind?
+# Or reorganize one drive in place (moves files into <drive>/Organized)
+python3 organize.py scan "/Volumes/WD Drive" --in-place
+python3 organize.py apply "/Volumes/WD Drive/Organized/_organizer/plan.json"
+
+# Delete the duplicates (asks you to type DELETE; each is re-verified first)
+python3 organize.py remove-duplicates "/Volumes/WD Drive/Organized/_organizer/plan.json"
+
+# Changed your mind? (undo restores moves and removes copies; deleted duplicates stay deleted)
 python3 organize.py undo "/Volumes/Archive/Organized/_organizer/log-20241023-101500.jsonl"
 ```
 
