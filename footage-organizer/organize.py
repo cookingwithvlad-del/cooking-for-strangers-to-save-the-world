@@ -637,6 +637,14 @@ def build_sessions(main, opts):
     return sessions
 
 
+def sample(items, n):
+    """Up to n photos/videos spread evenly across a session, for its contact sheet."""
+    vis = [i for i in items if i.kind in ("video", "photo")] or [i for i in items if i.kind == "raw"]
+    if len(vis) <= n:
+        return vis
+    return [vis[round(k * (len(vis) - 1) / (n - 1))] for k in range(n)]
+
+
 def session_label(items, opts):
     if opts.label:
         return safe(opts.label)
@@ -701,7 +709,8 @@ def plan(items, dest, opts, progress):
                 it.status, it.reason = "review", review_reason(it, opts)
             it.dst = os.path.join(folder, new)
         session_info.append({
-            "name": name, "folder": sdir, "start": s[0].time.isoformat(sep=" "),
+            "name": name, "label": label, "folder": sdir, "start": s[0].time.isoformat(sep=" "),
+            "samples": [i.src for i in sample(s, 6)],
             "end": max(i.time + dt.timedelta(seconds=i.duration or 0) for i in s).isoformat(sep=" ", timespec="seconds"),
             "videos": sum(1 for i in s if i.kind == "video"),
             "photos": sum(1 for i in s if i.kind in ("photo", "raw")),
@@ -939,6 +948,98 @@ def apply_plan(planfile, move=None, progress=print):
     return logfile, failed
 
 
+def contact_sheets(planfile, progress=print):
+    """One JPEG per session: a 3x2 grid of frames from its clips and photos, so a
+    person (or Claude) can see what each shoot was about and name it."""
+    ff = which("ffmpeg")
+    if not ff:
+        raise SystemExit("Contact sheets need ffmpeg (Mac: brew install ffmpeg).")
+    with open(planfile, encoding="utf-8") as f:
+        p = json.load(f)
+    out_dir = os.path.join(os.path.dirname(planfile), "sheets")
+    os.makedirs(out_dir, exist_ok=True)
+    made = []
+    for sess in p["sessions"]:
+        # Six tiles shared across the samples; a session with few clips gets several
+        # moments from each clip rather than the same frame repeated.
+        samples = sess.get("samples", [])
+        slots = []
+        for k, src in enumerate(samples):
+            count = 6 // len(samples) + (1 if k < 6 % len(samples) else 0)
+            is_video = os.path.splitext(src)[1].lower() in VIDEO
+            for t in ((2, 15, 40, 90, 180, 300)[:count] if is_video else (None,)):
+                slots.append((src, t))
+        frames = []
+        for n, (src, t) in enumerate(slots):
+            fr = os.path.join(out_dir, ".f%d.jpg" % n)
+            if os.path.exists(fr):
+                os.remove(fr)
+            vf = ["-frames:v", "1", "-vf",
+                  "scale=480:270:force_original_aspect_ratio=decrease,pad=480:270:(ow-iw)/2:(oh-ih)/2", fr]
+            if t is not None:
+                subprocess.run([ff, "-v", "quiet", "-y", "-ss", str(t), "-i", src] + vf)
+                if not (os.path.exists(fr) and os.path.getsize(fr)) and n and slots[n - 1][0] == src:
+                    continue   # clip ends before this moment
+            if not (os.path.exists(fr) and os.path.getsize(fr)):
+                subprocess.run([ff, "-v", "quiet", "-y", "-i", src] + vf)
+            if os.path.exists(fr) and os.path.getsize(fr):
+                frames.append(fr)
+        if not frames:
+            continue
+        while len(frames) < 6:
+            frames.append(frames[-1])
+        sheet = os.path.join(out_dir, sess["name"] + ".jpg")
+        cmd = [ff, "-v", "quiet", "-y"]
+        for fr in frames:
+            cmd += ["-i", fr]
+        cmd += ["-filter_complex", "".join("[%d]" % i for i in range(6)) +
+                "xstack=inputs=6:layout=0_0|w0_0|w0+w1_0|0_h0|w0_h0|w0+w1_h0", "-q:v", "4", sheet]
+        subprocess.run(cmd)
+        for fr in set(frames):
+            os.remove(fr)
+        if os.path.exists(sheet):
+            made.append(sheet)
+            progress("  " + sheet)
+    progress("%d contact sheets in %s" % (len(made), out_dir))
+    progress("To name sessions by what's in them, write a JSON file like "
+             '{"%s": "Beach Sunset"} and run: organize.py rename-sessions PLAN names.json'
+             % (p["sessions"][0]["name"] if p["sessions"] else "2024-05-12_Shoot"))
+    return made
+
+
+def rename_sessions(planfile, names, progress=print):
+    """Renames sessions in a plan (folder and the label inside every file name) before
+    it is applied. names: {old session name or old label: new label}."""
+    with open(planfile, encoding="utf-8") as f:
+        p = json.load(f)
+    changed = 0
+    for sess in p["sessions"]:
+        new = names.get(sess["name"]) or names.get(sess.get("label"))
+        if not new or not safe(new):
+            continue
+        new, old = safe(new), sess.get("label") or sess["name"].rsplit("_", 1)[-1]
+        old_folder = sess["folder"]
+        new_name = sess["name"][:len(sess["name"]) - len(old)] + new
+        new_folder = os.path.join(os.path.dirname(old_folder), new_name)
+        for o in p["operations"]:
+            if o["dst"].startswith(old_folder + os.sep):
+                rest = o["dst"][len(old_folder):]
+                d, b = os.path.split(rest)
+                o["dst"] = new_folder + os.path.join(d, b.replace("_%s_" % old, "_%s_" % new, 1))
+        for dup in p.get("duplicates", []):
+            if dup.get("keep_dst") and dup["keep_dst"].startswith(old_folder + os.sep):
+                rest = dup["keep_dst"][len(old_folder):]
+                d, b = os.path.split(rest)
+                dup["keep_dst"] = new_folder + os.path.join(d, b.replace("_%s_" % old, "_%s_" % new, 1))
+        progress("  %s -> %s" % (sess["name"], new_name))
+        sess.update(name=new_name, label=new, folder=new_folder)
+        changed += 1
+    with open(planfile, "w", encoding="utf-8") as f:
+        json.dump(p, f, indent=1)
+    progress("Renamed %d sessions in %s" % (changed, planfile))
+    return changed
+
+
 def remove_duplicates(planfile, yes=False, progress=print):
     """Deletes duplicates, each only after re-checking that the copy being kept still
     exists and has exactly the same content. Run after apply (or after scan, to clean
@@ -1103,6 +1204,11 @@ def main(argv=None):
     g = ap_.add_mutually_exclusive_group()
     g.add_argument("--move", dest="move", action="store_true", default=None)
     g.add_argument("--copy", dest="move", action="store_false")
+    cs = sub.add_parser("contact-sheets", help="make a frame grid per session to see what each shoot is about")
+    cs.add_argument("plan")
+    rn = sub.add_parser("rename-sessions", help="rename sessions in a plan from a JSON file {session: new name}")
+    rn.add_argument("plan")
+    rn.add_argument("names", help="JSON file mapping session name (or its current label) to a new name")
     rd = sub.add_parser("remove-duplicates", help="delete duplicates listed in a plan, after re-verifying each")
     rd.add_argument("plan")
     rd.add_argument("--yes", action="store_true", help="don't ask for confirmation")
@@ -1150,6 +1256,11 @@ def main(argv=None):
     elif opts.cmd == "apply":
         _, failed = apply_plan(opts.plan, opts.move)
         sys.exit(1 if failed else 0)
+    elif opts.cmd == "contact-sheets":
+        contact_sheets(opts.plan)
+    elif opts.cmd == "rename-sessions":
+        with open(opts.names, encoding="utf-8") as f:
+            rename_sessions(opts.plan, json.load(f))
     elif opts.cmd == "remove-duplicates":
         remove_duplicates(opts.plan, opts.yes)
     elif opts.cmd == "undo":

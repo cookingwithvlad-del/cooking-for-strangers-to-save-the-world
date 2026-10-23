@@ -247,6 +247,22 @@ class EndToEnd(unittest.TestCase):
         self.assertFalse(os.path.exists(copy_path))
         self.assertTrue(os.path.exists(self.card + "/DCIM/100CANON/IMG_0001.JPG"))
 
+    def test_contact_sheets_and_rename(self):
+        quiet = lambda *a: None
+        planfile = org.do_scan([self.card, self.card2], self.dest, Opts(), progress=quiet)
+        sheets = org.contact_sheets(planfile, progress=quiet)
+        self.assertEqual(len(sheets), 2)
+        self.assertGreater(os.path.getsize(sheets[0]), 1000)
+        n = org.rename_sessions(planfile, {"2024-05-12_Miami-Beach": "Ocean Drive Tacos", "iPhone-Shoot": "Hotel Breakfast"},
+                                progress=quiet)
+        self.assertEqual(n, 2)
+        org.apply_plan(planfile, progress=quiet)
+        got = self.files(self.dest)
+        self.assertIn("2024/2024-05-12_Ocean-Drive-Tacos/Video/2024-05-12_143000_Ocean-Drive-Tacos_V001-pt1_GoPro.mp4", got)
+        self.assertIn("2024/2024-05-12_Ocean-Drive-Tacos/Sidecars/2024-05-12_143000_Ocean-Drive-Tacos_V001-pt1_GoPro.lrv", got)
+        self.assertIn("2024/2024-05-13_Hotel-Breakfast/Video/2024-05-13_101500_Hotel-Breakfast_V001_iPhone.mov", got)
+        self.assertFalse(any("Miami-Beach" in f for f in got), got)
+
 
 if __name__ == "__main__":
     unittest.main()

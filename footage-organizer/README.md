@@ -71,6 +71,13 @@ python3 organize.py apply "/Volumes/Archive/Organized/_organizer/plan.json" --mo
 python3 organize.py scan "/Volumes/WD Drive" --in-place
 python3 organize.py apply "/Volumes/WD Drive/Organized/_organizer/plan.json"
 
+# Name folders by what's in the footage
+python3 organize.py contact-sheets "/Volumes/Archive/Organized/_organizer/plan.json"
+#   -> _organizer/sheets/<session>.jpg, six frames per shoot. Look at them (or let Claude look),
+#      then write names.json:  {"2025-06-01_DJI-Mini": "Beach Sunset", "2025-06-02_DJI-Mini": "Farmers Market"}
+python3 organize.py rename-sessions "/Volumes/Archive/Organized/_organizer/plan.json" names.json
+#   renames each session folder and the name inside every file, then apply as usual
+
 # Delete the duplicates (asks you to type DELETE; each is re-verified first)
 python3 organize.py remove-duplicates "/Volumes/WD Drive/Organized/_organizer/plan.json"
 
