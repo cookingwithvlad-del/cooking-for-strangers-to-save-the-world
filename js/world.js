@@ -1,3 +1,22 @@
+// Integer hash for per-tile variety. The 2D and 3D renderers and tools/export_world.js
+// all use it, so every view (and the Unreal export) gets the same city.
+function tileHash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; }
+
+// Building facades: each city's mix of styles and the tints a style is painted in.
+const FACADE_MIX = { ny: [["brick", 0.5], ["concrete", 0.3], ["glass", 0.2]], fl: [["stucco", 0.6], ["glass", 0.25], ["concrete", 0.15]], chi: [["brick", 0.4], ["concrete", 0.35], ["glass", 0.25]], la: [["stucco", 0.55], ["concrete", 0.25], ["glass", 0.2]] };
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
+const FACADE_TINTS = { glass: ["#dfe9f3", "#cfe0ee", "#d9e6e9", "#e4ecf2"], stucco: ["#f8e3d4", "#fdf1dc", "#dfeee6", "#f6dede", "#e8e4f4", "#fbf5e6"], concrete: ["#d9d7d2", "#cfd0cc", "#e0ded8", "#c9cbc8"] };
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
+function facadeStyle(bx, by, cid, hh) {
+  const r = tileHash(bx * 13 + 5, by * 29 + 1);
+  if (hh > 100) return r < 0.75 ? "glass" : "concrete";
+  let acc = 0;
+  for (const [k, wgt] of FACADE_MIX[cid]) { acc += wgt; if (r < acc) return k; }
+  return "brick";
+}
+// deno-lint-ignore no-unused-vars -- shared with the other <script> files
+function blockHeight(bx, by) { const h = tileHash(bx * 3 + 1, by * 7 + 2); const center = Math.hypot(bx - 4.5, by - 4.5); return 30 + Math.floor(h * 7) * 14 + (center < 2.5 ? 60 : 0) + (h > 0.92 ? 90 : 0); }
+
 function makeRng(seed) {
   let s = (seed >>> 0) || 1;
   return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
