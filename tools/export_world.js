@@ -17,23 +17,11 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const FILES = ["constants", "story", "people", "world"];
-const NAMES = ["T", "TILE", "CITY", "WORLD", "DIRS", "CITIES", "CITY_ORDER", "SHOPS", "EPISODES", "buildWorld", "cityOfTile"];
+const NAMES = ["T", "TILE", "CITY", "WORLD", "DIRS", "CITIES", "CITY_ORDER", "SHOPS", "EPISODES", "buildWorld", "cityOfTile", "tileHash", "FACADE_TINTS", "facadeStyle", "blockHeight"];
 const source = FILES.map(f => fs.readFileSync(path.join(root, "js", f + ".js"), "utf8")).join("\n;\n");
 const G = new Function(source + `\nreturn { ${NAMES.join(", ")} };`)();
-const { T, TILE, CITY, CITIES, SHOPS, EPISODES, cityOfTile } = G;
+const { T, TILE, CITY, CITIES, SHOPS, EPISODES, cityOfTile, tileHash: hash, FACADE_TINTS: TINTS, facadeStyle: styleOf, blockHeight } = G;
 
-// Same integer hash the 3D renderer uses, so Unreal gets the same city.
-const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; };
-const STYLE_MIX = { ny: [["brick", 0.5], ["concrete", 0.3], ["glass", 0.2]], fl: [["stucco", 0.6], ["glass", 0.25], ["concrete", 0.15]], chi: [["brick", 0.4], ["concrete", 0.35], ["glass", 0.25]], la: [["stucco", 0.55], ["concrete", 0.25], ["glass", 0.2]] };
-const TINTS = { glass: ["#dfe9f3", "#cfe0ee", "#d9e6e9", "#e4ecf2"], stucco: ["#f8e3d4", "#fdf1dc", "#dfeee6", "#f6dede", "#e8e4f4", "#fbf5e6"], concrete: ["#d9d7d2", "#cfd0cc", "#e0ded8", "#c9cbc8"] };
-const styleOf = (bx, by, cid, hh) => {
-  const r = hash(bx * 13 + 5, by * 29 + 1);
-  if (hh > 100) return r < 0.75 ? "glass" : "concrete";
-  let acc = 0;
-  for (const [k, wgt] of STYLE_MIX[cid]) { acc += wgt; if (r < acc) return k; }
-  return "brick";
-};
-const blockHeight = (bx, by) => { const h = hash(bx * 3 + 1, by * 7 + 2); const center = Math.hypot(bx - 4.5, by - 4.5); return 30 + Math.floor(h * 7) * 14 + (center < 2.5 ? 60 : 0) + (h > 0.92 ? 90 : 0); };
 const mix = (a, b, t) => { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16); const c = i => Math.round(((pa >> i) & 255) * (1 - t) + ((pb >> i) & 255) * t); return "#" + [16, 8, 0].map(i => c(i).toString(16).padStart(2, "0")).join(""); };
 
 const w = G.buildWorld();

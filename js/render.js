@@ -12,7 +12,6 @@ class Renderer {
   }
   invalidateMap() { this.mapDirty = true; }
   resize() { this.c.width = innerWidth; this.c.height = innerHeight; this.dark.width = innerWidth; this.dark.height = innerHeight; }
-  hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; }
   rr(x, y, w, h, r) { const c = this.ctx; c.beginPath(); c.moveTo(x + r, y); c.lineTo(x + w - r, y); c.quadraticCurveTo(x + w, y, x + w, y + r); c.lineTo(x + w, y + h - r); c.quadraticCurveTo(x + w, y + h, x + w - r, y + h); c.lineTo(x + r, y + h); c.quadraticCurveTo(x, y + h, x, y + h - r); c.lineTo(x, y + r); c.quadraticCurveTo(x, y, x + r, y); c.closePath(); }
 
   draw() {
@@ -37,7 +36,7 @@ class Renderer {
     if (!p.vehicle) { this.drawOrly(g.orly); this.drawPlayer(p); }
     for (const pd of g.peds) if (pd.say) this.drawSpeech(pd.x, pd.y - 20, pd.say);
     for (const s of g.strangers) this.drawBubble(s.x, s.y - 22, s.plate.icon, dist(s, p) < 140 ? s.plate.name : null);
-    for (const v of g.vehicles) if (v.honk) { this.drawSpeech(v.x, v.y - 18, HONK_LINES[Math.floor(this.hash(Math.round(v.x), Math.round(v.y)) * HONK_LINES.length)]); if (v.honkT < 1.5) v.honk = false; }
+    for (const v of g.vehicles) if (v.honk) { this.drawSpeech(v.x, v.y - 18, HONK_LINES[Math.floor(tileHash(Math.round(v.x), Math.round(v.y)) * HONK_LINES.length)]); if (v.honkT < 1.5) v.honk = false; }
     this.drawShopMarkers();
     this.drawFareMarker();
     this.drawObjectiveArrow();
@@ -79,14 +78,14 @@ class Renderer {
       } else if (t === T.SIDEWALK) {
         ctx.fillStyle = cityId === "la" ? "#c8bfa8" : cityId === "fl" ? "#d9cfc1" : "#a3a7ad"; ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "rgba(0,0,0,0.12)"; ctx.fillRect(px, py, TILE, 1); ctx.fillRect(px, py, 1, TILE);
-        const h = this.hash(tx, ty);
+        const h = tileHash(tx, ty);
         if (h < 0.06) { ctx.fillStyle = "#374151"; ctx.fillRect(px + 12, py + 6, 8, 12); ctx.fillStyle = "#1f2937"; ctx.fillRect(px + 13, py + 4, 6, 3); }
         else if (h < 0.1) { ctx.fillStyle = "#6b4f2a"; ctx.fillRect(px + 4, py + 12, 24, 6); ctx.fillRect(px + 6, py + 18, 3, 6); ctx.fillRect(px + 23, py + 18, 3, 6); }
         else if (h < 0.14) { ctx.fillStyle = "#2f6b2a"; ctx.beginPath(); ctx.arc(px + 16, py + 16, 9, 0, 7); ctx.fill(); ctx.fillStyle = "#5ea34e"; ctx.beginPath(); ctx.arc(px + 13, py + 13, 4, 0, 7); ctx.fill(); }
         else if (h < 0.17) { ctx.fillStyle = "#b91c1c"; ctx.fillRect(px + 12, py + 10, 8, 14); ctx.fillStyle = "#7f1d1d"; ctx.fillRect(px + 13, py + 8, 6, 3); }
       } else if (t === T.PARK) {
         ctx.fillStyle = cityId === "la" ? "#7a9b4a" : "#4c8a3f"; ctx.fillRect(px, py, TILE, TILE);
-        const h = this.hash(tx, ty);
+        const h = tileHash(tx, ty);
         if (h < 0.45) {
           ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.arc(px + 18, py + 18, 9, 0, 7); ctx.fill();
           ctx.fillStyle = cityId === "la" ? "#3f7d2f" : "#2f6b2a"; ctx.beginPath(); ctx.arc(px + 16, py + 16, 9, 0, 7); ctx.fill();
@@ -95,12 +94,12 @@ class Renderer {
         else if (h < 0.6) { ctx.fillStyle = "#a3b18a"; ctx.fillRect(px + 8, py + 8, 16, 16); }
       } else if (t === T.WATER) {
         ctx.fillStyle = wet ? "#1e3a5f" : "#2a5d8f"; ctx.fillRect(px, py, TILE, TILE);
-        const ph = this.hash(tx, ty) * 6.28;
+        const ph = tileHash(tx, ty) * 6.28;
         const wy = py + 10 + Math.sin(t0 * 1.3 + ph) * 6;
         ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(px + 4 + Math.cos(t0 + ph) * 3, wy, 14, 2); ctx.fillRect(px + 16, wy + 12, 10, 2);
       } else if (t === T.SAND) {
         ctx.fillStyle = "#e7d3a1"; ctx.fillRect(px, py, TILE, TILE);
-        const h = this.hash(tx, ty);
+        const h = tileHash(tx, ty);
         ctx.fillStyle = "rgba(0,0,0,0.08)"; ctx.fillRect(px + h * 20, py + 8, 3, 3);
         if (h < 0.08) { ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(px + 16, py + 14, 10, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(px + 16, py + 4); ctx.lineTo(px + 16, py + 24); ctx.lineTo(px + 6, py + 14); ctx.closePath(); ctx.fill(); }
         else if (h < 0.14) { ctx.fillStyle = "#3b82f6"; ctx.fillRect(px + 6, py + 10, 20, 10); }
@@ -108,11 +107,11 @@ class Renderer {
       } else if (t === T.BUILDING) {
         ctx.fillStyle = city.color; ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = city.roof; ctx.fillRect(px + 3, py + 3, 26, 26);
-        const hh = this.hash(tx + 99, ty);
+        const hh = tileHash(tx + 99, ty);
         if (hh < 0.12) { ctx.fillStyle = "#94a3b8"; ctx.fillRect(px + 10, py + 10, 12, 12); ctx.fillStyle = "#475569"; ctx.fillRect(px + 12, py + 12, 8, 8); }
         else if (hh < 0.18) { ctx.fillStyle = "#cbd5e1"; ctx.beginPath(); ctx.arc(px + 16, py + 16, 6, 0, 7); ctx.fill(); }
         else for (let wy = 0; wy < 2; wy++) for (let wx = 0; wx < 2; wx++) {
-          const lit = this.hash(tx * 2 + wx, ty * 2 + wy) < (0.25 + night * 0.5);
+          const lit = tileHash(tx * 2 + wx, ty * 2 + wy) < (0.25 + night * 0.5);
           ctx.fillStyle = lit ? (night > 0.3 ? "#fde68a" : "#e2e8f0") : "#1f2937";
           ctx.fillRect(px + 8 + wx * 11, py + 8 + wy * 11, 5, 5);
         }
@@ -389,8 +388,8 @@ class Renderer {
     ctx.strokeStyle = "rgba(180,200,255,0.35)"; ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < 140; i++) {
-      const x = (this.hash(i, 1) * W + t * 60 * (0.5 + this.hash(i, 2))) % W;
-      const y = (this.hash(i, 3) * H + t * 520 * (0.6 + this.hash(i, 4) * 0.6)) % H;
+      const x = (tileHash(i, 1) * W + t * 60 * (0.5 + tileHash(i, 2))) % W;
+      const y = (tileHash(i, 3) * H + t * 520 * (0.6 + tileHash(i, 4) * 0.6)) % H;
       ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 10);
     }
     ctx.stroke();
