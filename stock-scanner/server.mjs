@@ -58,7 +58,10 @@ async function get(url, { src, headers = {}, type = 'json', timeout = 12000 } = 
     mark(src, true);
     return out;
   } catch (e) {
-    mark(src, false, e.name === 'AbortError' ? `timeout from ${new URL(url).host}` : e.message);
+    let msg = e.name === 'AbortError' ? `timeout from ${new URL(url).host}` : e.message;
+    if (e.cause?.code) msg += ` (${e.cause.code} reaching ${new URL(url).host})`;
+    if (src === 'sec' && /^403/.test(msg) && !process.env.SEC_USER_AGENT) msg += ' (set SEC_USER_AGENT="Your Name you@example.com")';
+    mark(src, false, msg);
     throw e;
   } finally { clearTimeout(t); }
 }
@@ -76,24 +79,51 @@ function atr(h, l, c, n = 14) {
 
 /* ---------- Yahoo Finance ---------- */
 let yAuth = null;
+// Yahoo hands out the session cookie on fc.yahoo.com (a 404 page that still sets A1/A3). In the EU that page can
+// redirect to a consent screen and set nothing, so finance.yahoo.com is tried as a second cookie source.
+let yAuthBlockedUntil = 0;
+async function yCookie(url) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html' }, redirect: 'manual', signal: ctl.signal });
+    const cookies = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [r.headers.get('set-cookie')].filter(Boolean);
+    return cookies.map(c => c.split(';')[0]).filter(Boolean).join('; ');
+  } catch { return ''; } finally { clearTimeout(t); }
+}
 async function yahooAuth(force) {
   if (yAuth && !force && yAuth.exp > Date.now()) return yAuth;
-  const r = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': UA }, redirect: 'manual' });
-  const cookies = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [r.headers.get('set-cookie')].filter(Boolean);
-  const cookie = cookies.map(c => c.split(';')[0]).join('; ');
-  const res = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers: { 'User-Agent': UA, Cookie: cookie } });
-  const crumb = (await res.text()).trim();
-  if (!res.ok || !crumb || crumb.length > 64 || crumb.includes('<')) { mark('yahoo', false, 'Yahoo did not issue a session crumb'); throw new Error('no crumb'); }
+  // After a failed handshake, don't hammer Yahoo on every request; callers fall back to crumb-free endpoints.
+  if (yAuthBlockedUntil > Date.now()) throw new Error('Yahoo session unavailable (retrying in a few minutes)');
+  let cookie = await yCookie('https://fc.yahoo.com');
+  if (!cookie) cookie = await yCookie('https://finance.yahoo.com/');
+  let crumb = '', status = 0;
+  for (const host of ['query2', 'query1']) {
+    const res = await fetch(`https://${host}.finance.yahoo.com/v1/test/getcrumb`, { headers: { 'User-Agent': UA, Cookie: cookie } }).catch(() => null);
+    status = res?.status || 0;
+    crumb = res?.ok ? (await res.text()).trim() : '';
+    if (crumb && crumb.length <= 64 && !crumb.includes('<') && !/too many/i.test(crumb)) break;
+    crumb = '';
+  }
+  if (!crumb) {
+    yAuthBlockedUntil = Date.now() + 5 * MIN;
+    const why = status === 429 ? 'Yahoo is rate-limiting this IP (429)' : !cookie ? 'Yahoo set no session cookie (consent page or blocked)' : `Yahoo did not issue a session crumb (${status || 'no response'})`;
+    mark('yahoo', false, why); throw new Error(why);
+  }
   yAuth = { cookie, crumb, exp: Date.now() + 6 * HOUR };
   return yAuth;
 }
+// query1 and query2 serve the same API; when one answers 429 or 5xx, the other often still works.
+const otherHost = u => u.replace(/\/\/query([12])\./, (_, n) => `//query${n === '1' ? '2' : '1'}.`);
 function yget(url, crumb = false) {
   return lim.yahoo(async () => {
-    for (let attempt = 0; ; attempt++) {
-      let u = url; const headers = {};
-      if (crumb) { const a = await yahooAuth(attempt > 0); u += (u.includes('?') ? '&' : '?') + 'crumb=' + encodeURIComponent(a.crumb); headers.Cookie = a.cookie; }
+    let u0 = url, swapped = false, reauthed = false;
+    for (;;) {
+      let u = u0; const headers = {};
+      if (crumb) { const a = await yahooAuth(reauthed); u += (u.includes('?') ? '&' : '?') + 'crumb=' + encodeURIComponent(a.crumb); headers.Cookie = a.cookie; }
       try { return await get(u, { src: 'yahoo', headers }); } catch (e) {
-        if (!crumb || attempt > 0 || !/^(401|403)/.test(e.message)) throw e;
+        if (crumb && !reauthed && /^(401|403)/.test(e.message)) { reauthed = true; continue; }
+        if (!swapped && /^(429|5\d\d)|timeout/.test(e.message)) { swapped = true; u0 = otherHost(u0); continue; }
+        throw e;
       }
     }
   });
@@ -103,11 +133,33 @@ export async function yQuotes(symbols) {
   const out = {};
   for (let i = 0; i < symbols.length; i += 40) {
     const chunk = symbols.slice(i, i + 40);
-    const j = await memo('yq:' + chunk.join(','), 15e3, () => yget(`https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(','))}`, true));
+    const j = await settle(memo('yq:' + chunk.join(','), 15e3, () => yget(`https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(','))}`, true)));
     for (const q of j?.quoteResponse?.result || []) out[q.symbol] = q;
   }
+  // The quote endpoint needs a cookie + crumb. The chart endpoint doesn't, so any symbol the quote call missed
+  // gets a slimmer quote built from chart metadata (no pre/post-market, P/E or analyst rating).
+  const missing = symbols.filter(s => !out[s]);
+  const metas = await Promise.all(missing.map(s => settle(yChartQuote(s))));
+  missing.forEach((s, i) => { if (metas[i]) out[s] = metas[i]; });
+  if (!Object.keys(out).length && symbols.length) throw new Error(health.yahoo?.lastError || 'Yahoo Finance returned no quotes');
   return out;
 }
+export function quoteFromChart(sym, r) {
+  const m = r?.meta; if (!m || m.regularMarketPrice == null) return null;
+  const prev = m.previousClose ?? m.chartPreviousClose ?? null, b = bars(r), reg = m.currentTradingPeriod?.regular;
+  const day = reg ? b.filter(x => x.t >= reg.start && x.t < reg.end) : b;
+  const now = Date.now() / 1000;
+  return {
+    symbol: m.symbol || sym, shortName: m.shortName, longName: m.longName, exchange: m.exchangeName, fullExchangeName: m.fullExchangeName || m.exchangeName,
+    quoteType: m.instrumentType, regularMarketPrice: m.regularMarketPrice, regularMarketPreviousClose: prev,
+    regularMarketChangePercent: prev ? (m.regularMarketPrice / prev - 1) * 100 : null,
+    regularMarketOpen: day[0]?.o ?? null, regularMarketDayHigh: m.regularMarketDayHigh ?? null, regularMarketDayLow: m.regularMarketDayLow ?? null,
+    regularMarketVolume: m.regularMarketVolume ?? null, fiftyTwoWeekHigh: m.fiftyTwoWeekHigh ?? null, fiftyTwoWeekLow: m.fiftyTwoWeekLow ?? null,
+    marketState: reg && now >= reg.start && now < reg.end ? 'REGULAR' : 'CLOSED', fromChart: true
+  };
+}
+const yChartQuote = sym => memo('yc:' + sym, 30e3, async () =>
+  quoteFromChart(sym, (await yget(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=5m`))?.chart?.result?.[0]));
 function bars(res) {
   const q = res?.indicators?.quote?.[0] || {}, t = res?.timestamp || [];
   const rows = [];
@@ -231,10 +283,20 @@ const gNews = (sym, name) => memo('gn:' + sym, 10 * MIN, async () => {
 const GX = { NMS: 'NASDAQ', NGM: 'NASDAQ', NCM: 'NASDAQ', NAS: 'NASDAQ', NYQ: 'NYSE', NYS: 'NYSE', ASE: 'NYSEAMERICAN', PCX: 'NYSEARCA', BTS: 'BATS' };
 const gFinance = (sym, exch) => memo('gf:' + sym, MIN, async () => {
   const gx = GX[exch]; if (!gx) return null;
-  const html = await lim.google(() => get(`https://www.google.com/finance/quote/${encodeURIComponent(sym.replace('-', '.'))}:${gx}?hl=en`, { src: 'google', type: 'text' }));
-  const m = html.match(/data-last-price="([\d.]+)"/);
-  return m ? { price: +m[1] } : null;
+  const gsym = sym.replace('-', '.');
+  const html = await lim.google(() => get(`https://www.google.com/finance/quote/${encodeURIComponent(gsym)}:${gx}?hl=en`, { src: 'google', type: 'text' }));
+  const out = parseGooglePrice(html, gsym);
+  if (!out) mark('google', false, 'Google Finance page loaded but no price was found (layout changed?)');
+  return out;
 });
+// Google Finance has no API. The price used to sit in a data-last-price attribute; newer pages sometimes drop it,
+// so fall back to the big price div (class "YMlKec fxKbKc") and then to the embedded ["SYM","EXCH",...,price] data.
+export function parseGooglePrice(html, sym) {
+  const pats = [/data-last-price="([\d.]+)"/, /class="YMlKec fxKbKc"[^>]*>\s*[^\d<]{0,4}([\d,]+\.\d+)/];
+  if (sym) pats.push(new RegExp(`\\["${sym.replace(/[.\-^]/g, '\\$&')}","[A-Z]+"\\][^\\]]{0,200}?,(\\d+\\.\\d+),`));
+  for (const re of pats) { const m = html.match(re); if (m) { const p = +m[1].replace(/,/g, ''); if (p > 0) return { price: p }; } }
+  return null;
+}
 
 /* ---------- SEC EDGAR ---------- */
 const secTickers = () => memo('sec:tickers', 24 * HOUR, async () => {
@@ -259,8 +321,11 @@ const secFilings = sym => memo('sec:' + sym, HOUR, async () => {
 /* ---------- FINRA daily short-sale volume ---------- */
 export function parseFinra(txt) {
   const map = {};
-  for (const line of txt.split('\n').slice(1)) {
-    const [date, sym, short, , total] = line.split('|');
+  // Format checked 2026-10-25: header "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market",
+  // volumes now carry decimals (e.g. 322380.228185), lines may end in \r, and older files end with a record-count line.
+  for (const line of txt.split(/\r?\n/).slice(1)) {
+    const [date, sym, short, , total] = line.trim().split('|');
+    if (!/^\d{8}$/.test(date || '')) continue;
     if (sym && +total > 0) map[sym] = { ratio: +short / +total, date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` };
   }
   return map;
@@ -271,7 +336,7 @@ const finra = () => memo('finra', 3 * HOUR, async () => {
     const txt = await settle(lim.other(() => get(`https://cdn.finra.org/equity/regsho/daily/CNMSshvol${ymd(d).replace(/-/g, '')}.txt`, { src: 'finra', type: 'text' })));
     if (txt && txt.includes('|')) return parseFinra(txt);
   }
-  return {};
+  throw new Error(health.finra?.lastError || 'no FINRA short-volume file in the last week'); // not cached, retried next scan
 });
 
 /* ---------- StockTwits ---------- */
@@ -384,7 +449,41 @@ export const server = http.createServer(async (req, res) => {
   }
 });
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+/* ---------- self-check: node server.mjs --check [SYMBOL] ---------- */
+// Calls every source once against the live endpoints and reports what came back, so a broken feed shows up
+// before you open the page. Exit code is the number of required sources that failed.
+export async function checkSources(sym = 'AAPL') {
+  const q = (await settle(yQuotes([sym])))?.[sym];
+  const chain = await settle(yOptions(sym)), summary = await settle(ySummary(sym));
+  const fin = await settle(finra());
+  const checks = [
+    ['Yahoo quote', 'yahoo', q && `${q.regularMarketPrice}${q.fromChart ? ' (chart fallback: quote API refused the crumb)' : ''}`],
+    ['Yahoo daily bars', 'yahoo', (await settle(yDaily(sym)))?.length && 'bars'],
+    ['Yahoo intraday', 'yahoo', (await settle(yIntraday(sym)))?.path?.length && 'bars'],
+    ['Yahoo quoteSummary', 'yahoo', summary && `modules: ${Object.keys(summary).length}`],
+    ['Yahoo options', 'yahoo', parseOptions(chain, q?.regularMarketPrice) && `exp ${parseOptions(chain, q?.regularMarketPrice).exp}`],
+    ['Yahoo movers', 'yahoo', (m => m && Object.values(m).some(a => a.length) && Object.entries(m).map(([k, a]) => `${k} ${a.length}`).join(', '))(await settle(yMovers()))],
+    ['Yahoo news', 'yahoo', (await settle(yNews(sym)))?.length && 'items'],
+    ['Google News RSS', 'google', (await settle(gNews(sym, q?.longName)))?.length && 'items'],
+    ['Google Finance', 'google', (await settle(gFinance(sym, q?.exchange || 'NMS')))?.price],
+    ['SEC EDGAR', 'sec', (x => x && `${x.form4_30d} Form 4s in 30d, last 8-K ${x.last8k?.date || 'none'}`)(await settle(secFilings(sym)))],
+    ['FINRA short volume', 'finra', fin && Object.keys(fin).length && (fin[sym] ? `${sym} ${(fin[sym].ratio * 100).toFixed(1)}% on ${fin[sym].date}` : `${Object.keys(fin).length} symbols`)],
+    ['StockTwits', 'stocktwits', (x => x && `${x.n} posts, ${x.watchers} watchers`)(await settle(social(sym)))],
+    ['Finnhub (optional)', 'finnhub', FINNHUB_KEY ? (await settle(fhMspr(sym))) ?? (await settle(fhRec(sym)))?.n : 'skipped, no FINNHUB_KEY']
+  ];
+  let failed = 0;
+  for (const [name, src, val] of checks) {
+    const ok = !!val || (val === 0 && src === 'finnhub');
+    if (!ok && src !== 'finnhub') failed++;
+    console.log(`${ok ? 'OK  ' : 'FAIL'}  ${name.padEnd(20)} ${ok ? val : health[src]?.lastError || 'no data'}`);
+  }
+  return failed;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv.includes('--check')) {
+  const sym = process.argv.slice(2).find(a => !a.startsWith('-')) || 'AAPL';
+  checkSources(sym.toUpperCase()).then(n => process.exit(n));
+} else if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   server.listen(PORT, () => {
     console.log(`Stock Playlists running at http://localhost:${PORT}`);
     if (!process.env.SEC_USER_AGENT) console.log('Tip: set SEC_USER_AGENT="Your Name you@example.com" so SEC EDGAR accepts requests.');
