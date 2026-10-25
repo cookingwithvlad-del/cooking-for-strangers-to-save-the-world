@@ -148,27 +148,4 @@ unreal/                   Unreal Engine 5 project: Content/Python/cfs_build.py r
 .mcp.json                 Claude Code MCP config: the UEMCP server that connects to the editor
 
 tests/            deno test: story data and world generation
-footage-organizer/  sorts, dates and renames video and photos on a drive (see below)
-wd-diagnose.sh    read-only Mac check for a WD drive that won't mount
 ```
-
-## Footage Organizer on a Mac with the WD drive
-
-`footage-organizer/` imports the videos and photos from cameras and drives and files them on the WD drive by year and shoot, with names like `2024-05-12_143000_Miami-Beach_V001_GoPro.mp4`. Full details are in [footage-organizer/README.md](footage-organizer/README.md).
-
-1. Plug in the WD drive and check it shows up in Finder. If it doesn't, run `bash wd-diagnose.sh` in Terminal. It only reads, never changes the drive, and ends with what to try next. Never click Initialize or Erase if macOS offers it.
-2. Optional but better dates and camera names: `brew install ffmpeg exiftool`.
-3. Double-click `footage-organizer/Organize Footage.command`. The first time, macOS may block it: right-click it, choose Open, then Open again.
-4. Pick the drives or cards to import from, and give the WD drive as the destination, for example `/Volumes/WD Drive/Organized` (the name is whatever the drive is called under `/Volumes`). Press Enter instead to tidy the WD drive in place.
-5. Open the report it shows, check the plan, and say yes to import. Copy mode leaves the originals untouched, and `undo` reverses an import.
-
-From Terminal the same thing is:
-
-```
-cd footage-organizer
-python3 organize.py scan ~/Movies "/Volumes/GOPRO" --dest "/Volumes/WD Drive/Organized"
-open "/Volumes/WD Drive/Organized/_organizer/report.html"
-python3 organize.py apply "/Volumes/WD Drive/Organized/_organizer/plan.json"
-```
-
-Run the organizer's tests with `cd footage-organizer && python3 -m unittest test_organize -v` (the end-to-end ones need ffmpeg).
