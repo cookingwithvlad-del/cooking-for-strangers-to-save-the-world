@@ -38,7 +38,7 @@ The server fetches and merges these sources, with in-memory caching and per-host
 
 | Source | Endpoint | Status |
 | --- | --- | --- |
-| SEC EDGAR | `www.sec.gov/files/company_tickers.json`, `data.sec.gov/submissions/CIK##########.json` | Verified live: fields `cik_str`/`ticker` and `filings.recent.{form,filingDate,accessionNumber,primaryDocument}` match the parser. |
+| SEC EDGAR | `www.sec.gov/files/company_tickers.json`, `data.sec.gov/submissions/CIK##########.json` | Verified live: `cik_str`/`ticker` and the `filings.recent` arrays (`filingDate`, `accessionNumber`) match the parser. `form` and `primaryDocument` are documented fields in the same arrays. |
 | FINRA | `cdn.finra.org/equity/regsho/daily/CNMSshvolYYYYMMDD.txt` | Verified live. Volumes now have decimals and the parser handles that, Windows line endings and the trailer line. Files appear after the close, so the server walks back up to a week. |
 | StockTwits | `api.stocktwits.com/api/2/streams/symbol/SYM.json` | Verified live: `symbol.watchlist_count` and `messages[].entities.sentiment.basic` match the parser. |
 | Yahoo Finance | `query1/query2.finance.yahoo.com` chart v8, quote v7, quoteSummary v10, options v7, screener, trending, search | **Not live-tested**: Yahoo blocks automated checks from cloud servers. Code follows what current open-source clients (yahoo-finance2 v4, yfinance 1.x) use. Run `--check` to confirm on your machine. |
