@@ -1,5 +1,5 @@
 // Stars for served tables: the thresholds match the cooking result labels.
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 
 const source = Deno.readTextFileSync(new URL("../js/story.js", import.meta.url));
 const G = new Function(source + "\nreturn { EPISODES, starsFor, isCookedTable, MAX_STARS };")();

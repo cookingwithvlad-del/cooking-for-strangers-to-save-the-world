@@ -74,6 +74,8 @@ Works on desktop (keyboard) and phones (on-screen controls). Progress auto-saves
 deno lint && deno test -A
 ```
 
+The test helpers come from `@std/assert`, mapped in `deno.json`, so the same commands work on Deno 1 (what CI uses) and Deno 2.
+
 ## How it plays
 
 Every table in the book is a mission, in the book's order:
