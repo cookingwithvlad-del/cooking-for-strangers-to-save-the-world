@@ -1,7 +1,7 @@
 // Smoke tests for the game's data and world generation. The game runs as plain
 // <script> files sharing globals, so this loads the pure-data ones the same way
 // (one shared scope, in index.html order) and checks they hold together.
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals } from "@std/assert";
 
 const FILES = ["constants", "story", "people", "world"];
 const NAMES = ["T", "TILE", "CITIES", "CITY_ORDER", "SHOPS", "ING", "EPISODES", "PLATES", "SIGN_LINES", "cookCue", "makePerson", "buildWorld", "tileHash", "facadeStyle", "FACADE_TINTS"];
