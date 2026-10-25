@@ -4,7 +4,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 
 const FILES = ["constants", "story", "people", "world"];
-const NAMES = ["T", "TILE", "CITIES", "CITY_ORDER", "SHOPS", "ING", "EPISODES", "PLATES", "SIGN_LINES", "cookCue", "makePerson", "buildWorld"];
+const NAMES = ["T", "TILE", "CITIES", "CITY_ORDER", "SHOPS", "ING", "EPISODES", "PLATES", "SIGN_LINES", "cookCue", "makePerson", "buildWorld", "tileHash", "facadeStyle", "FACADE_TINTS"];
 const root = new URL("../js/", import.meta.url);
 const source = FILES.map(f => Deno.readTextFileSync(new URL(f + ".js", root))).join("\n;\n");
 const G = new Function(source + `\nreturn { ${NAMES.join(", ")} };`)();
@@ -65,4 +65,12 @@ Deno.test("generated people have a name and a job", () => {
     const p = G.makePerson(world.rng, city);
     assert(p.name && p.job, `${city}: incomplete person`);
   }
+});
+
+Deno.test("every block gets a known facade style, and the hash stays in [0, 1)", () => {
+  for (const cid of G.CITY_ORDER) for (let bx = 0; bx < 10; bx++) for (let by = 0; by < 10; by++) for (const hh of [30, 140]) {
+    const st = G.facadeStyle(bx, by, cid, hh);
+    assert(st === "brick" || G.FACADE_TINTS[st], `${cid} ${bx},${by}: unknown style ${st}`);
+  }
+  for (let i = 0; i < 1000; i++) { const h = G.tileHash(i, i * 7 + 3); assert(h >= 0 && h < 1); }
 });

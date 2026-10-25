@@ -150,7 +150,6 @@ class Renderer3D {
   invalidateMap() { this.mapDirty = true; this.rebuildLocks(); }
   resize() { this.gl.setSize(innerWidth, innerHeight); if (this.composer) this.composer.setSize(innerWidth, innerHeight); this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); }
   cycleCamera() { this.camMode = (this.camMode + 1) % 3; return ["chase", "high", "overhead"][this.camMode]; }
-  hash(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; }
 
   // ---------- procedural textures ----------
   canvasTex(w, h, draw, repeat = true) {
@@ -174,7 +173,7 @@ class Renderer3D {
       ctx.fillStyle = lit ? "#000" : "#e6e1d8"; ctx.fillRect(0, 0, w, h);
       if (!lit) { this.noise(ctx, w, h, 0, 0.12, 6000); ctx.strokeStyle = "rgba(0,0,0,0.08)"; for (let y = 0; y < h; y += 24) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); } }
       for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++) {
-        const x = 24 + c * 128, y = 20 + r * 96, on = this.hash(c * 31 + 7, r * 17 + 3) < 0.38;
+        const x = 24 + c * 128, y = 20 + r * 96, on = tileHash(c * 31 + 7, r * 17 + 3) < 0.38;
         if (lit) { if (on) { const g = ctx.createLinearGradient(0, y, 0, y + 60); g.addColorStop(0, "#fff0c2"); g.addColorStop(1, "#f3b25a"); ctx.fillStyle = g; ctx.fillRect(x, y, 80, 60); } continue; }
         ctx.fillStyle = "#6b7280"; ctx.fillRect(x - 4, y - 4, 88, 68);
         const g = ctx.createLinearGradient(x, y, x + 80, y + 60); g.addColorStop(0, "#2b3648"); g.addColorStop(0.5, "#516178"); g.addColorStop(1, "#1f2937");
@@ -249,25 +248,16 @@ class Renderer3D {
     const facB = { brick: bld, glass: new GeoBuilder(), stucco: new GeoBuilder(), concrete: new GeoBuilder() };
     const facKeys = { brick: "facade", glass: "facadeGlass", stucco: "facadeStucco", concrete: "facadeConcrete" };
     const A0 = window.Assets3D ? Assets3D.tex : {};
-    const STYLE_MIX = { ny: [["brick", 0.5], ["concrete", 0.3], ["glass", 0.2]], fl: [["stucco", 0.6], ["glass", 0.25], ["concrete", 0.15]], chi: [["brick", 0.4], ["concrete", 0.35], ["glass", 0.25]], la: [["stucco", 0.55], ["concrete", 0.25], ["glass", 0.2]] };
-    const TINTS = { glass: ["#dfe9f3", "#cfe0ee", "#d9e6e9", "#e4ecf2"], stucco: ["#f8e3d4", "#fdf1dc", "#dfeee6", "#f6dede", "#e8e4f4", "#fbf5e6"], concrete: ["#d9d7d2", "#cfd0cc", "#e0ded8", "#c9cbc8"] };
-    const styleOf = (bx, by, cid, hh) => {
-      const r = this.hash(bx * 13 + 5, by * 29 + 1);
-      let st = "brick";
-      if (hh > 100) st = r < 0.75 ? "glass" : "concrete";
-      else { let acc = 0; for (const [k, wgt] of STYLE_MIX[cid]) { acc += wgt; if (r < acc) { st = k; break; } } }
-      return A0[facKeys[st] + "Color"] ? st : "brick";
-    };
-    const blockHeight = (bx, by) => { const h = this.hash(bx * 3 + 1, by * 7 + 2); const center = Math.hypot(bx - 4.5, by - 4.5); return 30 + Math.floor(h * 7) * 14 + (center < 2.5 ? 60 : 0) + (h > 0.92 ? 90 : 0); };
+    const styleOf = (bx, by, cid, hh) => { const st = facadeStyle(bx, by, cid, hh); return A0[facKeys[st] + "Color"] ? st : "brick"; };
     roads.box(WORLD / 2, -6, WORLD / 2, WORLD + 600, 8, WORLD + 600, "#242833", 64);
     const isWalkable = t => t === T.SIDEWALK || t === T.SAND || t === T.PARK || t === T.GARAGE;
     for (let ty = 0; ty < CITY; ty++) for (let tx = 0; tx < CITY; tx++) {
-      const t = w.get(tx, ty), cx = tx * TILE + 16, cz = ty * TILE + 16, cid = cityOfTile(tx, ty), h = this.hash(tx, ty);
+      const t = w.get(tx, ty), cx = tx * TILE + 16, cz = ty * TILE + 16, cid = cityOfTile(tx, ty), h = tileHash(tx, ty);
       const lx = tx % 5, ly = ty % 5, warm = cid === "fl" || cid === "la";
       if (t === T.ROAD || t === T.BRIDGE) {
         const y = t === T.BRIDGE ? 3 : 0.5;
         roads.box(cx, y, cz, TILE, t === T.BRIDGE ? 6 : 1, TILE, "#ffffff", 48, Math.floor(h * 3) * 0.5);
-        if (t === T.ROAD && this.hash(tx + 77, ty + 33) < 0.16) { const pr = 6 + h * 6; puddles.cyl(cx + (h - 0.5) * 14, 1.12, cz + (this.hash(ty + 5, tx + 9) - 0.5) * 14, pr, pr, 0.12, "#ffffff", 14); }
+        if (t === T.ROAD && tileHash(tx + 77, ty + 33) < 0.16) { const pr = 6 + h * 6; puddles.cyl(cx + (h - 0.5) * 14, 1.12, cz + (tileHash(ty + 5, tx + 9) - 0.5) * 14, pr, pr, 0.12, "#ffffff", 14); }
         if (tx % 5 === 0 && ty % 5 !== 0) { props.box(cx, y + 0.65, cz - 8, 1.6, 0.3, 10, "#d8c25a"); props.box(cx, y + 0.65, cz + 8, 1.6, 0.3, 10, "#d8c25a"); }
         else if (ty % 5 === 0 && tx % 5 !== 0) { props.box(cx - 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); props.box(cx + 8, y + 0.65, cz, 10, 0.3, 1.6, "#d8c25a"); }
         const isCross = tx % 5 === 0 && ty % 5 === 0;
@@ -310,7 +300,7 @@ class Renderer3D {
           else if (h < 0.22 && cid === "ny") { props.box(cx, 7, cz, 8, 12, 8, "#1d4ed8"); props.box(cx, 13.5, cz, 8.5, 1.5, 8.5, "#1e3a8a"); }
           else if (h < 0.25) { props.box(cx, 6, cz, 6, 12, 6, "#ef4444"); props.box(cx, 12.5, cz, 6.5, 1, 6.5, "#991b1b"); }
         } else if (t === T.PARK) {
-          if (h < 0.45) { if (warm && h < 0.2) this.palm(props, cx + (h - 0.2) * 20, cz + this.hash(ty, tx) * 16 - 8, h); else this.tree(props, cx + (h - 0.2) * 20, cz + this.hash(ty, tx) * 16 - 8, cid, h); }
+          if (h < 0.45) { if (warm && h < 0.2) this.palm(props, cx + (h - 0.2) * 20, cz + tileHash(ty, tx) * 16 - 8, h); else this.tree(props, cx + (h - 0.2) * 20, cz + tileHash(ty, tx) * 16 - 8, cid, h); }
           else if (h < 0.52) { props.box(cx, 5, cz, 20, 1.5, 5, "#8b5a2b"); props.box(cx, 8, cz - 2.5, 20, 5, 1.2, "#8b5a2b"); }
           else if (h < 0.58) { props.cyl(cx, 3, cz, 9, 9, 2, "#a3b18a", 10); props.cyl(cx, 6, cz, 1.2, 1.2, 8, "#cbd5e1", 5); }
           else if (h < 0.62) { props.box(cx, 3, cz, 18, 2, 18, "#a8a29e"); }
@@ -327,16 +317,16 @@ class Renderer3D {
         water.box(cx, -1.5, cz, TILE, 1, TILE, "#ffffff", 64, h);
       } else if (t === T.BUILDING) {
         const bx = Math.floor(tx / 5), by = Math.floor(ty / 5);
-        const hh = blockHeight(bx, by) + (this.hash(tx * 5, ty * 3) < 0.3 ? 14 : 0);
+        const hh = blockHeight(bx, by) + (tileHash(tx * 5, ty * 3) < 0.3 ? 14 : 0);
         const baked = !!A0.facadeColor, style = styleOf(bx, by, cid, hh), fb = facB[style];
         let tint;
         if (style === "brick") tint = baked ? new THREE.Color("#ffffff").lerp(new THREE.Color(CITIES[cid].color), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.1) : new THREE.Color(CITIES[cid].color).lerp(new THREE.Color("#ffffff"), 0.35).offsetHSL(0, 0, (h - 0.5) * 0.08);
-        else { const pal = TINTS[style]; tint = new THREE.Color(pal[Math.floor(this.hash(bx * 7 + 2, by * 3 + 11) * pal.length)]).offsetHSL(0, 0, (h - 0.5) * 0.05); }
-        fb.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, Math.floor(this.hash(tx + 3, ty + 9) * 4) * 0.25, 96);
+        else { const pal = FACADE_TINTS[style]; tint = new THREE.Color(pal[Math.floor(tileHash(bx * 7 + 2, by * 3 + 11) * pal.length)]).offsetHSL(0, 0, (h - 0.5) * 0.05); }
+        fb.box(cx, hh / 2, cz, TILE, hh, TILE, tint, 64, Math.floor(tileHash(tx + 3, ty + 9) * 4) * 0.25, 96);
         props.box(cx, hh + 0.9, cz, TILE + 0.6, 1.8, TILE + 0.6, CITIES[cid].roof);
-        if (this.hash(tx + 7, ty + 3) < 0.35) props.box(cx + (h - 0.5) * 12, hh + 4, cz + (this.hash(ty, tx) - 0.5) * 12, 8, 6, 8, "#9aa3ad");
-        if (this.hash(tx + 11, ty + 5) < 0.1) { props.box(cx, hh + 3, cz, 10, 4, 10, "#cbd5e1"); props.cyl(cx, hh + 12, cz, 0.5, 0.5, 14, "#e5e7eb", 4); props.cyl(cx, hh + 9, cz, 3.5, 3.5, 6, "#8b5a2b", 8); }
-        if (hh > 100 && this.hash(tx + 2, ty + 8) < 0.5) fb.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 0.25, 96);
+        if (tileHash(tx + 7, ty + 3) < 0.35) props.box(cx + (h - 0.5) * 12, hh + 4, cz + (tileHash(ty, tx) - 0.5) * 12, 8, 6, 8, "#9aa3ad");
+        if (tileHash(tx + 11, ty + 5) < 0.1) { props.box(cx, hh + 3, cz, 10, 4, 10, "#cbd5e1"); props.cyl(cx, hh + 12, cz, 0.5, 0.5, 14, "#e5e7eb", 4); props.cyl(cx, hh + 9, cz, 3.5, 3.5, 6, "#8b5a2b", 8); }
+        if (hh > 100 && tileHash(tx + 2, ty + 8) < 0.5) fb.box(cx, hh + 14, cz, TILE - 10, 28, TILE - 10, tint, 64, 0.25, 96);
         if (style === "glass" || style === "concrete") props.box(cx, hh + 2.2, cz, TILE - 2, 1, TILE - 2, "#4b5563");
         for (let d = 0; d < 4; d++) {
           const [dx, dy] = DIRS[d];
@@ -345,9 +335,9 @@ class Renderer3D {
           // ground floor: storefront glass and an awning on street-facing sides
           const gx = cx + dx * 16.3, gz = cz + dy * 16.3;
           glass.box(gx, 5, gz, dx ? 0.6 : TILE - 4, 9, dy ? 0.6 : TILE - 4, "#ffffff", 32);
-          const aw = this.hash(tx * 3 + d, ty * 5 + 1);
+          const aw = tileHash(tx * 3 + d, ty * 5 + 1);
           if (aw < 0.5) props.box(cx + dx * 19, 10.5, cz + dy * 19, dx ? 6 : TILE - 8, 0.8, dy ? 6 : TILE - 8, NEON_COLORS[Math.floor(aw * 16) % NEON_COLORS.length]);
-          if (aw > 0.72) { const word = Math.floor(this.hash(tx + d, ty * 2) * NEON_WORDS.length); signs.quad(cx + dx * 16.8, 13.5, cz + dy * 16.8, 24, 5, dx ? (dx > 0 ? Math.PI / 2 : -Math.PI / 2) : (dy > 0 ? 0 : Math.PI), "#ffffff", this.signUV("neon:" + word)); }
+          if (aw > 0.72) { const word = Math.floor(tileHash(tx + d, ty * 2) * NEON_WORDS.length); signs.quad(cx + dx * 16.8, 13.5, cz + dy * 16.8, 24, 5, dx ? (dx > 0 ? Math.PI / 2 : -Math.PI / 2) : (dy > 0 ? 0 : Math.PI), "#ffffff", this.signUV("neon:" + word)); }
         }
       } else if (t === T.SHOP || t === T.HOME) {
         if (lx === 2 && ly === 2) {
@@ -406,7 +396,7 @@ class Renderer3D {
     for (let ty = 0; ty < CITY; ty += 5) for (let tx = 0; tx < CITY; tx += 5) if (w.get(tx, ty) === T.ROAD) {
       const cx = tx * TILE + 16, cz = ty * TILE + 16;
       this.lampPosts.push({ x: cx - 13 + 6, z: cz - 13 }, { x: cx + 13 + 6, z: cz + 13 });
-      this.trafficHeads.push({ x: cx - 13, z: cz + 13, phase: this.hash(tx, ty), ns: true }, { x: cx + 13, z: cz - 13, phase: this.hash(tx, ty), ns: false });
+      this.trafficHeads.push({ x: cx - 13, z: cz + 13, phase: tileHash(tx, ty), ns: true }, { x: cx + 13, z: cz - 13, phase: tileHash(tx, ty), ns: false });
     }
     if (!this.locks) { this.locks = new THREE.Group(); this.scene.add(this.locks); }
     this.rebuildLocks();
@@ -726,7 +716,7 @@ class Renderer3D {
     for (const v of [...g.vehicles, ...g.police]) {
       if (!near(v.x, v.y)) continue;
       this.drawVehicle(v, night);
-      if (v.honk) this.label(v.x, 20, v.y, HONK_LINES[Math.floor(this.hash(Math.round(v.x), Math.round(v.y)) * HONK_LINES.length)], "lbl");
+      if (v.honk) this.label(v.x, 20, v.y, HONK_LINES[Math.floor(tileHash(Math.round(v.x), Math.round(v.y)) * HONK_LINES.length)], "lbl");
       if (v.honk && v.honkT < 1.5) v.honk = false;
     }
     for (const pd of g.peds) {
@@ -738,7 +728,7 @@ class Renderer3D {
       else {
         const dd = dist(pd, p);
         if (dd < 70 && pd.hungry) this.label(pd.x, 26, pd.y, "🍴", "lbl plate");
-        if (pd.hailing && p.vehicle && p.vehicle.kind === "taxi" && !g.fare && dd < 260 && pd.state === "walk") this.label(pd.x, 26, pd.y, "🖐 " + HAIL_LINES[Math.floor(this.hash(Math.round(pd.x), 3) * HAIL_LINES.length)], "lbl");
+        if (pd.hailing && p.vehicle && p.vehicle.kind === "taxi" && !g.fare && dd < 260 && pd.state === "walk") this.label(pd.x, 26, pd.y, "🖐 " + HAIL_LINES[Math.floor(tileHash(Math.round(pd.x), 3) * HAIL_LINES.length)], "lbl");
       }
     }
     for (const s of g.strangers) {

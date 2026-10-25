@@ -113,33 +113,39 @@ Between tables it's an open city, and you can do what you like in it:
 
 ```
 index.html        page + HUD
-assets/           photos of Vlad (the chef) and Orly (the host) — title, cooking and afterword screens
-assets/ref/       character reference sheets the faces and outfits are built from
-                  (drop in assets/chef-kitchen.jpg to show Vlad on the cooking screen)
-                  title-1.mp4 and title-2.mp4 play back-to-back, muted, behind the title screen;
-                  browsers that can't decode them (they're HEVC) fall back to the photo hero
 css/style.css
+
 js/constants.js   tile sizes, tuning
 js/story.js       cities, shops, ingredients, all 68 episodes, sign lines, cooking cues
 js/people.js      pedestrian names, jobs, looks and dialogue
-js/radio.js       procedural car radio (WebAudio step sequencer, four stations)
-js/world.js       procedural city grid: four quadrants, rivers and bridges, beaches, shops, garages
+js/world.js       procedural city grid: four quadrants, rivers and bridges, beaches, shops, garages;
+                  the shared tile hash, facade styles and block heights
 js/entities.js    vehicle classes (player/traffic/police AI), pedestrians and dogs, strangers
+js/game.js        game state, mission flow, heat/police, save/load
+js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
+js/input.js       keyboard + touch
+js/audio.js       tiny WebAudio sound effects
+js/radio.js       procedural car radio (WebAudio step sequencer, four stations)
+js/save.js        localStorage
 js/render3d.js    Three.js renderer: merged city geometry, instanced cars and people, lighting, rain, camera, HTML labels
 js/assets3d.js    loads the Blender-built models and textures (optional; primitives stay as fallback)
 js/render.js      2D canvas fallback renderer, minimap, full map
-js/vendor/        three.min.js r128 + GLTFLoader (MIT)
+js/main.js        boot: picks the renderer, title video, main loop
+js/vendor/        three.min.js r128 + GLTFLoader + post-processing (MIT)
+
+assets/           photos of Vlad (the chef) and Orly (the host) for the title, cooking and afterword screens
+                  (drop in assets/chef-kitchen.jpg to show Vlad on the cooking screen);
+                  title-1.mp4 and title-2.mp4 play back-to-back, muted, behind the title screen;
+                  browsers that can't decode them (they're HEVC) fall back to the photo hero
+assets/ref/       character reference sheets the faces and outfits are built from
+assets/3d/        models (glb), baked textures, sky environments, faces
+
 tools/blender_assets.py   headless Blender pipeline that builds assets/3d
 tools/export_world.js     writes the procedural world as JSON for other engines (unreal/Content/Data/world.json)
 tools/bake_glb.py         bakes node transforms into the glb models for per-mesh importers
 tools/unreal_bridge.py    runs Python inside a live Unreal Editor over remote execution
 unreal/                   Unreal Engine 5 project: Content/Python/cfs_build.py rebuilds the world from the data above
 .mcp.json                 Claude Code MCP config: the UEMCP server that connects to the editor
-assets/3d/        models (glb), baked textures, sky environments
-js/ui.js          HUD, modals (shop, sign, cooking, journal, map)
-js/game.js        game state, mission flow, heat/police, save/load
-js/input.js       keyboard + touch
-js/audio.js       tiny WebAudio sound effects
-js/save.js        localStorage
+
 tests/            deno test: story data and world generation
 ```
